@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ## [Unreleased]
 
 ### Added
+- **Cloud submit** (`scripts/submit.py`) — stage 3: one parameterized SageMaker
+  training job writing the §9 job tags. Built against the installed sagemaker
+  3.13.1 `ModelTrainer` API (the classic `PyTorch` estimator is gone — see #1).
+  Dry-run by default; `--submit` required to spend.
+- **Sweep fan-out** (`scripts/sweep.py`) — stage 4: cartesian product over
+  `head.sweep_axes()`, one tagged `<Sweep>-NN` job per point. Dry-run by default.
+- **Live board feed** (`dashboard/live.go`) — stage 4/5: read-only
+  `ListTrainingJobs → ListTags → CloudWatch GetMetricData` (the #1 flow);
+  `--sweep` enables live mode, otherwise the sample feed renders without AWS.
+- **Spot/checkpoint resume** (molecular head) — stage 5: periodic checkpoints
+  carry optimizer + epoch; a reclaimed job resumes from the synced checkpoint
+  rather than restarting. Verified locally.
+- **Result viewers** (stage 7): Streamlit collaborator viewer (`app/app.py`) and
+  marimo operator cockpit (`analysis/explore.py`), both domain-blind via
+  `head.viewer()`. New `viewers` uv dependency group.
 - **Molecular head** (`src/heads/molecular/`) — ESOL log-solubility regression,
   the reference head built end to end (SPEC §3). Sweep axis featurization
   `{ecfp, graph, graph+3d}` × depth `{shallow, deep}`; metric RMSE; ECFP→MLP and
