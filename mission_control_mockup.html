@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Mission Control — mockup</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b22; --edge:#2a323d;
+    --ink:#e6edf3; --dim:#8b949e; --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,monospace;
+    --pending:#6e7681; --running:#3fb6ff; --done:#3fd07a; --interrupt:#f85149; --resume:#e3a008;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#080a0e;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+    color:var(--ink);display:flex;justify-content:center;padding:28px 16px;}
+  .mc-wrap{background:var(--bg);border:1px solid var(--edge);border-radius:14px;overflow:hidden;max-width:880px;width:100%;}
+  .mc-head{display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--edge);background:linear-gradient(180deg,#171d26,#12171e);}
+  .mc-title{font-weight:650;font-size:15px;}
+  .mc-sub{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .mc-agg{margin-left:auto;display:flex;gap:14px;font-family:var(--mono);font-size:11px;}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px;}
+  @media(max-width:620px){.grid{grid-template-columns:repeat(2,1fr);}}
+  .tile{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:11px 12px;position:relative;overflow:hidden;}
+  .tile.run{border-color:#1f3a4d;} .tile.resume{border-color:#5a4410;} .tile.done{border-color:#1f4a31;}
+  .rid{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .hyp{font-family:var(--mono);font-size:12px;margin:3px 0 8px;} .hyp .k{color:var(--running);}
+  .badge{position:absolute;top:11px;right:11px;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;}
+  .b-run{background:rgba(63,182,255,.13);color:var(--running);}
+  .b-done{background:rgba(63,208,122,.13);color:var(--done);}
+  .b-pend{background:rgba(110,118,129,.15);color:var(--pending);}
+  .b-res{background:rgba(227,160,8,.14);color:var(--resume);}
+  .spark{height:46px;width:100%;display:block;}
+  .foot{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:7px;}
+  .foot .m{color:var(--ink);}
+  .pulse{animation:p 1.6s ease-in-out infinite;} @keyframes p{0%,100%{opacity:.55}50%{opacity:1}}
+  .note{display:flex;gap:10px;align-items:flex-start;padding:12px 18px 16px;border-top:1px solid var(--edge);background:#10151c;}
+  .note .tag{font-family:var(--mono);font-size:10px;color:var(--running);border:1px solid #1f3a4d;border-radius:6px;padding:3px 7px;white-space:nowrap;margin-top:1px;}
+  .note p{margin:0;font-size:12.5px;line-height:1.5;color:var(--dim);} .note b{color:var(--ink);}
+</style>
+</head>
+<body>
+  <div class="mc-wrap">
+    <div class="mc-head">
+      <div>
+        <div class="mc-title">Training Mission Control</div>
+        <div class="mc-sub">reading job state from the control plane · not a notebook</div>
+      </div>
+      <div class="mc-agg">
+        <span><span class="dot" style="background:var(--running)"></span><b>4</b> running</span>
+        <span><span class="dot" style="background:var(--done)"></span><b>1</b> done</span>
+        <span><span class="dot" style="background:var(--resume)"></span><b>1</b> resuming</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="tile done">
+        <span class="badge b-done">COMPLETED</span>
+        <div class="rid">run-01 · g5.xlarge</div>
+        <div class="hyp"><span class="k">hyp</span> shallow · <span class="k">feat</span> ecfp</div>
+        <svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none"><polyline fill="none" stroke="#3fd07a" stroke-width="1.6" points="0,8 25,16 50,22 75,28 100,33 125,37 150,40 175,41 200,42"/></svg>
+        <div class="foot"><span>step 500/500</span><span class="m">RMSE 0.41</span></div>
+      </div>
+      <div class="tile run">
+        <span class="badge b-run pulse">IN PROGRESS</span>
+        <div class="rid">run-02 · g5.xlarge</div>
+        <div class="hyp"><span class="k">hyp</span> deep · <span class="k">feat</span> ecfp</div>
+        <svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none"><polyline fill="none" stroke="#3fb6ff" stroke-width="1.6" points="0,7 25,14 50,21 75,25 100,30 125,33 150,35"/><circle cx="150" cy="35" r="2.4" fill="#3fb6ff" class="pulse"/></svg>
+        <div class="foot"><span>step 372/500</span><span class="m">RMSE 0.38</span></div>
+      </div>
+      <div class="tile run">
+        <span class="badge b-run pulse">IN PROGRESS</span>
+        <div class="rid">run-03 · g5.xlarge</div>
+        <div class="hyp"><span class="k">hyp</span> gnn · <span class="k">feat</span> graph</div>
+        <svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none"><polyline fill="none" stroke="#3fb6ff" stroke-width="1.6" points="0,9 25,15 50,19 75,22 100,24 125,26 150,27"/><circle cx="150" cy="27" r="2.4" fill="#3fb6ff" class="pulse"/></svg>
+        <div class="foot"><span>step 368/500</span><span class="m">RMSE 0.31</span></div>
+      </div>
+      <div class="tile run">
+        <span class="badge b-run pulse">IN PROGRESS</span>
+        <div class="rid">run-04 · g5.xlarge</div>
+        <div class="hyp"><span class="k">hyp</span> gnn · <span class="k">feat</span> graph+3d</div>
+        <svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none"><polyline fill="none" stroke="#3fb6ff" stroke-width="1.6" points="0,8 25,15 50,22 75,27 100,31 125,34 150,36"/><circle cx="150" cy="36" r="2.4" fill="#3fb6ff" class="pulse"/></svg>
+        <div class="foot"><span>step 360/500</span><span class="m">RMSE 0.39</span></div>
+      </div>
+      <div class="tile resume">
+        <span class="badge b-res pulse">RESUMING ⟲</span>
+        <div class="rid">run-05 · g5.xlarge · spot</div>
+        <div class="hyp"><span class="k">hyp</span> deep · <span class="k">feat</span> graph</div>
+        <svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none"><polyline fill="none" stroke="#e3a008" stroke-width="1.6" points="0,9 25,16 50,21 75,25 100,28"/><line x1="100" y1="2" x2="100" y2="44" stroke="#f85149" stroke-width="1" stroke-dasharray="2 2"/><polyline fill="none" stroke="#e3a008" stroke-width="1.6" stroke-dasharray="3 3" points="100,28 125,30 150,31"/><text x="103" y="11" fill="#f85149" font-size="7" font-family="monospace">reclaim</text></svg>
+        <div class="foot"><span>resumed @ ckpt 250</span><span class="m">RMSE 0.34</span></div>
+      </div>
+      <div class="tile">
+        <span class="badge b-pend">PENDING</span>
+        <div class="rid">run-06 · g5.xlarge</div>
+        <div class="hyp"><span class="k">hyp</span> gnn · <span class="k">feat</span> graph+3d</div>
+        <svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none"><line x1="0" y1="44" x2="200" y2="44" stroke="#2a323d" stroke-width="1"/><text x="100" y="26" fill="#6e7681" font-size="9" font-family="monospace" text-anchor="middle">queued · provisioning</text></svg>
+        <div class="foot"><span>step 0/500</span><span class="m">—</span></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="tag">the tell, inverted</span>
+      <p>Six runs in flight from one <b>train.py</b> — one already done, one surviving a spot reclaim by resuming from its S3 checkpoint. Each tile's hypothesis is a <b>scientific</b> choice (featurization, architecture), not a CS knob. <b>You cannot show this in a notebook:</b> one kernel holds one run's state. The grid of live curves <b>is</b> the argument that this is research — and every tile is a window onto a real job, never a cell.</p>
+    </div>
+  </div>
+</body>
+</html>
