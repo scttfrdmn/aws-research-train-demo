@@ -34,6 +34,14 @@ cloud = [
     "boto3>=1.34",
 ]
 
+# Result viewers (stage 7): marimo (operator cockpit) + Streamlit (collaborator).
+# Both are Python and dispatch to head.viewer(); kept out of core/heads.
+viewers = [
+    "marimo>=0.9",
+    "streamlit>=1.40",
+    "matplotlib>=3.8",
+]
+
 # Dev tooling: one formatter/linter (ruff), one type checker (mypy), pytest.
 dev = [
     "ruff>=0.6",
@@ -63,7 +71,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 strict = true
 # Heads bring untyped scientific libs; don't fail the contract over their stubs.
 # follow_imports=skip keeps mypy from parsing rdkit's (malformed) bundled stubs.
