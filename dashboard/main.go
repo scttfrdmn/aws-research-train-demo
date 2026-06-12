@@ -14,6 +14,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
@@ -68,7 +69,23 @@ func sampleFeed() feed {
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "listen address (loopback for the Studio proxy)")
 	tmpl := flag.String("template", "", "path to board_template.html (default: next to the binary / CWD)")
+	sweep := flag.String("sweep", "", "sweep id to scope live ListTrainingJobs (empty = sample feed)")
+	region := flag.String("region", "", "AWS region for live reads (default: SDK chain)")
 	flag.Parse()
+
+	// Live mode only when a sweep is named; otherwise serve the sample feed so
+	// the approved view renders with no AWS access. All AWS calls are read-only.
+	var live *liveClient
+	if *sweep != "" {
+		lc, err := newLiveClient(context.Background(), *region)
+		if err != nil {
+			log.Fatalf("live client: %v", err)
+		}
+		live = lc
+		log.Printf("live mode: scoping sweep %q (read-only)", *sweep)
+	} else {
+		log.Printf("sample mode: no --sweep given, serving sample feed")
+	}
 
 	templatePath := *tmpl
 	if templatePath == "" {
@@ -93,7 +110,16 @@ func main() {
 	mux.HandleFunc("/api/jobs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		if err := json.NewEncoder(w).Encode(sampleFeed()); err != nil {
+		out := sampleFeed()
+		if live != nil {
+			f, err := live.fetchSweep(r.Context(), *sweep)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			out = f
+		}
+		if err := json.NewEncoder(w).Encode(out); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
