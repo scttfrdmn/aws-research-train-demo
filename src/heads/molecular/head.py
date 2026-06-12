@@ -93,6 +93,7 @@ class MolecularHead:
 
     name = "molecular"
     dependency_group = "molecular"
+    _ckpt_every = 25  # epochs between checkpoints (spot-resume granularity)
 
     # --- contract ---------------------------------------------------------
 
@@ -170,15 +171,67 @@ class MolecularHead:
             return max(1, min(epochs, run.max_steps))
         return epochs
 
-    def _checkpoint(self, run: Run, model: nn.Module, feat: str, depth: str) -> None:
+    def _checkpoint(
+        self,
+        run: Run,
+        model: nn.Module,
+        feat: str,
+        depth: str,
+        epoch: int = 0,
+        opt: torch.optim.Optimizer | None = None,
+    ) -> None:
+        """Persist model + optimizer + epoch to the (S3-synced) checkpoint dir.
+
+        Including the optimizer state and last epoch is what lets a spot-reclaimed
+        job *resume* mid-training rather than restart (stage 5, SPEC §4).
+        """
         Path(run.checkpoint_dir).mkdir(parents=True, exist_ok=True)
         path = Path(run.checkpoint_dir) / "model.pt"
-        torch.save(
-            {"state_dict": model.state_dict(), "feat": feat, "depth": depth}, path
-        )
+        payload = {
+            "state_dict": model.state_dict(),
+            "feat": feat,
+            "depth": depth,
+            "epoch": epoch,
+        }
+        if opt is not None:
+            payload["optimizer"] = opt.state_dict()
+        torch.save(payload, path)
         (Path(run.checkpoint_dir) / "meta.json").write_text(
-            json.dumps({"feat": feat, "depth": depth, "metric": self.metric_name()})
+            json.dumps(
+                {
+                    "feat": feat,
+                    "depth": depth,
+                    "metric": self.metric_name(),
+                    "epoch": epoch,
+                }
+            )
         )
+
+    def _resume(
+        self,
+        run: Run,
+        model: nn.Module,
+        opt: torch.optim.Optimizer,
+        feat: str,
+    ) -> int:
+        """Resume from an existing checkpoint if one matches; return start epoch.
+
+        On a spot restart SageMaker re-syncs the checkpoint S3 URI into the
+        container, so an interrupted job sees its last `model.pt` here and picks
+        up where it left off. Returns 0 for a fresh run.
+        """
+        path = Path(run.checkpoint_dir) / "model.pt"
+        if not path.exists():
+            return 0
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        if ckpt.get("feat") != feat:  # different sweep point — ignore
+            return 0
+        model.load_state_dict(ckpt["state_dict"])
+        if "optimizer" in ckpt:
+            opt.load_state_dict(ckpt["optimizer"])
+        start = int(ckpt.get("epoch", 0)) + 1
+        run.metric_sink.log(start, {"resumed_from_epoch": float(ckpt.get("epoch", 0))})
+        return start
 
     def _fit_ecfp(
         self,
@@ -194,7 +247,9 @@ class MolecularHead:
         model = _MLP(mol_data.ecfp_dim(), depth).to(dev)
         opt = torch.optim.Adam(model.parameters(), lr=lr)
         loss_fn = nn.MSELoss()
-        for epoch in range(self._max_epochs(run, epochs)):
+        total = self._max_epochs(run, epochs)
+        start = self._resume(run, model, opt, "ecfp")
+        for epoch in range(start, total):
             model.train()
             opt.zero_grad()
             loss = loss_fn(model(x), y)
@@ -202,7 +257,9 @@ class MolecularHead:
             opt.step()
             rmse = float(torch.sqrt(loss.detach()))
             run.metric_sink.log(epoch, {self.metric_name(): rmse})
-        self._checkpoint(run, model, "ecfp", depth)
+            if epoch % self._ckpt_every == 0:
+                self._checkpoint(run, model, "ecfp", depth, epoch, opt)
+        self._checkpoint(run, model, "ecfp", depth, total - 1, opt)
 
     def _fit_graph(
         self,
@@ -222,7 +279,9 @@ class MolecularHead:
         model = _GNN(mol_data.node_feature_dim(with_3d), depth).to(dev)
         opt = torch.optim.Adam(model.parameters(), lr=lr)
         loss_fn = nn.MSELoss()
-        for epoch in range(self._max_epochs(run, epochs)):
+        total = self._max_epochs(run, epochs)
+        start = self._resume(run, model, opt, feat)
+        for epoch in range(start, total):
             model.train()
             sq_err, n = 0.0, 0
             for batch in loader:
@@ -236,7 +295,9 @@ class MolecularHead:
                 n += batch.num_graphs
             rmse = float(np.sqrt(sq_err / max(n, 1)))
             run.metric_sink.log(epoch, {self.metric_name(): rmse})
-        self._checkpoint(run, model, feat, depth)
+            if epoch % self._ckpt_every == 0:
+                self._checkpoint(run, model, feat, depth, epoch, opt)
+        self._checkpoint(run, model, feat, depth, total - 1, opt)
 
 
 # The registry loads this attribute (see spine/registry.py).
