@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ## [Unreleased]
 
 ### Added
+- **Molecular head** (`src/heads/molecular/`) — ESOL log-solubility regression,
+  the reference head built end to end (SPEC §3). Sweep axis featurization
+  `{ecfp, graph, graph+3d}` × depth `{shallow, deep}`; metric RMSE; ECFP→MLP and
+  graph→GCN models; `predict` + a viewer declaring the predicted-vs-actual
+  scatter. Registered in the spine; passes the contract-conformance test.
+  Smoke-runs locally in seconds (`--max-steps`); a full ECFP run reaches
+  ~0.3 RMSE, a visible behavior delta. Vendored ESOL CSV for offline smoke.
+  `data.py` shape tests + CLI arg-parsing tests added.
 - Repo scaffold: `uv` project (`pyproject.toml`, `.python-version` 3.12.13),
   ruff + mypy, pytest.
 - The head contract `src/heads/base.py` — the typed `Head` protocol every head

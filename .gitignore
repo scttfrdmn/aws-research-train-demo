@@ -11,6 +11,9 @@ data/
 checkpoints/
 *.ckpt
 *.pt
+# ...except the vendored ESOL sample, kept for deterministic offline smoke (#2)
+!src/heads/molecular/data/
+!src/heads/molecular/data/delaney-processed.csv
 
 # Go
 dashboard/dashboard

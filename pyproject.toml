@@ -66,9 +66,12 @@ python_version = "3.12"
 files = ["src", "tests"]
 strict = true
 # Heads bring untyped scientific libs; don't fail the contract over their stubs.
+# follow_imports=skip keeps mypy from parsing rdkit's (malformed) bundled stubs.
 [[tool.mypy.overrides]]
 module = ["rdkit.*", "torch_geometric.*", "sagemaker.*", "boto3.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
+follow_imports_for_stubs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

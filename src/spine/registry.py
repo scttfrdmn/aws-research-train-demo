@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 # nothing. Heads are added here as they land (molecular first; weather/genomics/
 # llm in v0.4+). The spine never imports these modules eagerly.
 _REGISTRY: dict[str, str] = {
-    # "molecular": "heads.molecular.head:HEAD",
+    "molecular": "heads.molecular.head:HEAD",
 }
 
 

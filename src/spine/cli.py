@@ -41,7 +41,9 @@ def _parse_known(argv: list[str] | None) -> tuple[argparse.Namespace, list[str]]
     )
     parser.add_argument(
         "--checkpoint-dir",
-        default=os.environ.get("SM_CHECKPOINT_DIR", "/opt/ml/checkpoints"),
+        # Cloud runs set SM_CHECKPOINT_DIR (the container path synced to S3);
+        # local runs default to ./checkpoints so smoke needs no cloud paths.
+        default=os.environ.get("SM_CHECKPOINT_DIR", "checkpoints"),
         help="where the head writes checkpoints (synced to S3 in cloud runs)",
     )
     return parser.parse_known_args(argv)
