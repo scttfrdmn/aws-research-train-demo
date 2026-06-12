@@ -1,0 +1,25 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Data + checkpoints (never committed; vendored sample data is added explicitly)
+data/
+checkpoints/
+*.ckpt
+*.pt
+
+# Go
+dashboard/dashboard
+/board
+
+# Local env / secrets — never commit credentials (CLAUDE.md)
+.env
+.env.*
+*.pem
+
+# OS
+.DS_Store

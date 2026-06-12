@@ -1,0 +1,74 @@
+[project]
+name = "aws-research-train-demo"
+version = "0.1.0"
+description = "One neutral spine, four domain heads behind a contract, a Go control-plane board, three proxied surfaces. Molecular head first."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+# Core stays minimal: the spine dispatches to heads and fans metrics out.
+# torch + numpy are the one shared dep every head's training rides on.
+# Each head's own libraries live in its dependency-group below, never here.
+dependencies = [
+    "numpy>=2.0",
+    "torch>=2.4",
+]
+
+# Per-head dependency groups, keyed to each head's `dependency_group`.
+# Installing one head never drags in another's stack:
+#   uv sync                      # core only
+#   uv sync --group molecular    # + the molecular head's deps
+[dependency-groups]
+# Molecular head — see issue #2 (verify-first). PyG CORE ONLY: never add
+# torch-scatter / torch-sparse / pyg-lib (the fragile torch+CUDA-pinned wheels).
+molecular = [
+    "rdkit>=2026.3,<2027",
+    "torch-geometric>=2.8,<2.9",
+    "pandas>=2.0",
+]
+# weather / genomics / llm groups are added when those heads land (v0.4+).
+
+# Cloud execution (stages 3+): managed jobs, spot, checkpointing, tracking.
+# Kept out of core so local author/smoke needs no AWS SDK. local extra brings
+# SageMaker local mode for container validation.
+cloud = [
+    "sagemaker[local]>=3.13,<4",
+    "boto3>=1.34",
+]
+
+# Dev tooling: one formatter/linter (ruff), one type checker (mypy), pytest.
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.0",
+]
+
+[tool.uv]
+# Heads are optional installs; nothing here pulls a head group by default.
+default-groups = ["dev"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spine", "src/heads"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "scripts"]
+
+[tool.ruff.lint]
+# Keep the seam honest: pyflakes, pycodestyle, isort, bugbear, pyupgrade.
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests"]
+strict = true
+# Heads bring untyped scientific libs; don't fail the contract over their stubs.
+[[tool.mypy.overrides]]
+module = ["rdkit.*", "torch_geometric.*", "sagemaker.*", "boto3.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
