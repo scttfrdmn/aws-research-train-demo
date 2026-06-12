@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training Mission Control</title>
+<style>
+  :root{
+    --bg:#0e1117; --panel:#161b22; --edge:#2a323d;
+    --ink:#e6edf3; --dim:#8b949e; --mono:'SF Mono',ui-monospace,'Cascadia Code',Menlo,monospace;
+    --pending:#6e7681; --running:#3fb6ff; --done:#3fd07a; --interrupt:#f85149; --resume:#e3a008;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#080a0e;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
+    color:var(--ink);display:flex;justify-content:center;padding:28px 16px;}
+  .mc-wrap{background:var(--bg);border:1px solid var(--edge);border-radius:14px;overflow:hidden;max-width:880px;width:100%;}
+  .mc-head{display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--edge);background:linear-gradient(180deg,#171d26,#12171e);}
+  .mc-title{font-weight:650;font-size:15px;}
+  .mc-sub{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .mc-agg{margin-left:auto;display:flex;gap:14px;font-family:var(--mono);font-size:11px;}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px;}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px;}
+  @media(max-width:620px){.grid{grid-template-columns:repeat(2,1fr);}}
+  .tile{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:11px 12px;position:relative;overflow:hidden;}
+  .tile.run{border-color:#1f3a4d;} .tile.resume{border-color:#5a4410;} .tile.done{border-color:#1f4a31;}
+  .rid{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .hyp{font-family:var(--mono);font-size:12px;margin:3px 0 8px;} .hyp .k{color:var(--running);}
+  .badge{position:absolute;top:11px;right:11px;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;}
+  .b-run{background:rgba(63,182,255,.13);color:var(--running);}
+  .b-done{background:rgba(63,208,122,.13);color:var(--done);}
+  .b-pend{background:rgba(110,118,129,.15);color:var(--pending);}
+  .b-res{background:rgba(227,160,8,.14);color:var(--resume);}
+  .spark{height:46px;width:100%;display:block;}
+  .foot{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:7px;}
+  .foot .m{color:var(--ink);}
+  .pulse{animation:p 1.6s ease-in-out infinite;} @keyframes p{0%,100%{opacity:.55}50%{opacity:1}}
+  .note{display:flex;gap:10px;align-items:flex-start;padding:12px 18px 16px;border-top:1px solid var(--edge);background:#10151c;}
+  .note .tag{font-family:var(--mono);font-size:10px;color:var(--running);border:1px solid #1f3a4d;border-radius:6px;padding:3px 7px;white-space:nowrap;margin-top:1px;}
+  .note p{margin:0;font-size:12.5px;line-height:1.5;color:var(--dim);} .note b{color:var(--ink);}
+</style>
+</head>
+<body>
+  <div class="mc-wrap">
+    <div class="mc-head">
+      <div>
+        <div class="mc-title">Training Mission Control</div>
+        <div class="mc-sub">reading job state from the control plane · not a notebook</div>
+      </div>
+      <div class="mc-agg" id="agg"></div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="note">
+      <span class="tag">the tell, inverted</span>
+      <p>Runs in flight from one <b>train.py</b> — surviving spot reclaims by resuming from S3 checkpoints. Each tile's hypothesis is a <b>scientific</b> choice (featurization, architecture), not a CS knob. <b>You cannot show this in a notebook:</b> one kernel holds one run's state. The grid of live curves <b>is</b> the argument that this is research — and every tile is a window onto a real job, never a cell.</p>
+    </div>
+  </div>
+
+<script>
+// The board never imports head code. It renders tiles purely from the job feed,
+// which is built (Go side) from SageMaker job tags per SPEC §9 — Hypothesis,
+// Metric, Domain, Instance, Spot. This page stays domain-blind: it never
+// branches on Domain.
+//
+// Relative URL on purpose (SPEC §5.2 / §9): the Studio Jupyter proxy strips the
+// /proxy/<port>/ prefix, so 'api/jobs' resolves under the proxied page and a
+// leading-slash '/api/jobs' would 404 at the Studio root.
+const FEED = 'api/jobs';
+const POLL_MS = 4000;
+
+// status → [tile class, badge class, badge text, stroke color, pulse?]
+const STATUS = {
+  PENDING:       ['',        'b-pend', 'PENDING',      null,                  false],
+  IN_PROGRESS:   ['run',     'b-run',  'IN PROGRESS',  'var(--running)',      true ],
+  COMPLETED:     ['done',    'b-done', 'COMPLETED',    'var(--done)',         false],
+  RESUMING:      ['resume',  'b-res',  'RESUMING ⟲',   'var(--resume)',       true ],
+};
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// curve points → SVG polyline coords across a 200x46 box.
+function sparkPoints(curve){
+  if(!curve || curve.length === 0) return '';
+  const n = curve.length;
+  const lo = Math.min(...curve), hi = Math.max(...curve);
+  const span = (hi - lo) || 1;
+  return curve.map((v,i) => {
+    const x = n === 1 ? 0 : (i/(n-1))*200;
+    const y = 44 - ((v - lo)/span)*40;   // higher value → higher on chart
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+}
+
+function spark(job){
+  const [, , , stroke] = STATUS[job.status] || STATUS.PENDING;
+  if(job.status === 'PENDING'){
+    return `<svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none">`
+      + `<line x1="0" y1="44" x2="200" y2="44" stroke="#2a323d" stroke-width="1"/>`
+      + `<text x="100" y="26" fill="#6e7681" font-size="9" font-family="monospace" text-anchor="middle">queued · provisioning</text></svg>`;
+  }
+  const pts = sparkPoints(job.curve);
+  const last = (job.curve && job.curve.length)
+    ? sparkPoints(job.curve).split(' ').pop().split(',') : null;
+  let svg = `<svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none">`;
+  if(job.status === 'RESUMING' && job.reclaimAt != null){
+    // split the curve at the reclaim point: solid before, dashed (resumed) after
+    const rx = (job.reclaimAt).toFixed(1);
+    svg += `<polyline fill="none" stroke="${stroke}" stroke-width="1.6" points="${pts}"/>`
+      + `<line x1="${rx}" y1="2" x2="${rx}" y2="44" stroke="#f85149" stroke-width="1" stroke-dasharray="2 2"/>`
+      + `<text x="${(+rx)+3}" y="11" fill="#f85149" font-size="7" font-family="monospace">reclaim</text>`;
+  } else {
+    svg += `<polyline fill="none" stroke="${stroke}" stroke-width="1.6" points="${pts}"/>`;
+  }
+  if(job.status === 'IN_PROGRESS' && last){
+    svg += `<circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="${stroke}" class="pulse"/>`;
+  }
+  return svg + `</svg>`;
+}
+
+function tile(job){
+  const [tcls, bcls, btext, , , pulse] = STATUS[job.status] || STATUS.PENDING;
+  const rid = [job.id, job.instance, job.spot ? 'spot' : null].filter(Boolean).join(' · ');
+  const metric = (job.metricValue == null) ? '—'
+    : `${esc(job.metricName || '').toUpperCase()} ${(+job.metricValue).toFixed(2)}`;
+  const step = `step ${job.step ?? 0}/${job.totalSteps ?? 0}`;
+  const footL = (job.status === 'RESUMING' && job.resumedAtCkpt != null)
+    ? `resumed @ ckpt ${job.resumedAtCkpt}` : step;
+  return `<div class="tile ${tcls}">`
+    + `<span class="badge ${bcls}${pulse ? ' pulse' : ''}">${btext}</span>`
+    + `<div class="rid">${esc(rid)}</div>`
+    + `<div class="hyp">${esc(job.hypothesis || '')}</div>`
+    + spark(job)
+    + `<div class="foot"><span>${esc(footL)}</span><span class="m">${esc(metric)}</span></div>`
+    + `</div>`;
+}
+
+function agg(jobs){
+  const c = {IN_PROGRESS:0, COMPLETED:0, RESUMING:0};
+  jobs.forEach(j => { if(c[j.status] != null) c[j.status]++; });
+  const dot = v => `<span class="dot" style="background:var(--${v})"></span>`;
+  return `<span>${dot('running')}<b>${c.IN_PROGRESS}</b> running</span>`
+    + `<span>${dot('done')}<b>${c.COMPLETED}</b> done</span>`
+    + `<span>${dot('resume')}<b>${c.RESUMING}</b> resuming</span>`;
+}
+
+async function refresh(){
+  try{
+    const res = await fetch(FEED, {cache:'no-store'});
+    if(!res.ok) return;
+    const data = await res.json();
+    const jobs = data.jobs || [];
+    document.getElementById('grid').innerHTML = jobs.map(tile).join('');
+    document.getElementById('agg').innerHTML = agg(jobs);
+  }catch(e){ /* leave the last good frame on the screen; no flicker */ }
+}
+
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>
