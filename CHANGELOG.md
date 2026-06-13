@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   down; completed the teardown runbook (EC2/FIS path + all three IAM roles).
 
 ### Changed
+- **Weather head reframed from deblur to PDE operator-learning.** The synthetic
+  task now learns a known PDE *solution operator* (one 2-D diffusion + advection
+  step) instead of image deblur — the map a neural operator is actually built to
+  emulate in 2026. Same hand-rolled FNO/U-Net, same CPU-seconds smoke; modernizes
+  the *science* the showcase head tells. Verified: learned operator RMSE 0.151 vs
+  identity-baseline 1.068 (7× — genuinely emulates the solver).
 - **Default instance is `ml.c7i.large` (CPU), not `ml.g5.xlarge`.** This account
   caps g5 training at 1 concurrent job (CPU quota 30); a parallel sweep needs
   CPU, and the tiny ESOL models train on CPU in minutes. `c7i.large` ($0.107/hr)

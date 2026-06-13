@@ -1,7 +1,10 @@
 """Weather head — spatial field prediction (SPEC §3, issue #9).
 
-Deblur a band-limited field; sweep axis operator {fno, unet} × resolution.
-Metric: field RMSE. Implements the contract; the spine never special-cases it.
+**Operator learning:** given an initial field, predict the field after one step
+of a known PDE (2-D diffusion + advection) — the map a neural operator is built
+to emulate in 2026, not image restoration. Sweep axis operator {fno, unet} ×
+resolution. Metric: field RMSE. Implements the contract; the spine never
+special-cases it.
 
 Both operators are hand-rolled in plain torch (verify-first #9): a tiny FNO
 (SpectralConv2d via torch.fft, differentiable on CPU) and a tiny U-Net. No
