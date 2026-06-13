@@ -182,10 +182,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--feat", default="ecfp")
     p.add_argument("--depth", default="shallow")
     p.add_argument("--epochs", type=int, default=300)
-    # ml.c5.xlarge (CPU): the tiny ESOL models don't need a GPU, and this
-    # account caps ml.g5.xlarge at 1 concurrent job (CPU quota is 20-30), so a
-    # parallel sweep needs CPU. Resolves a -cpu- DLC. Override with --instance.
-    p.add_argument("--instance", default="ml.c5.xlarge")
+    # ml.c7i.large (CPU): the tiny ESOL models don't need a GPU, and this
+    # account caps ml.g5.xlarge at 1 concurrent job (CPU quota is 30), so a
+    # parallel sweep needs CPU. c7i.large is the cheapest SageMaker training
+    # instance offered in us-west-2 ($0.107/hr, ~half of c5.xlarge) and ample
+    # for single-batch ESOL. Resolves a -cpu- DLC. Override with --instance.
+    p.add_argument("--instance", default="ml.c7i.large")
     p.add_argument("--spot", action="store_true")
     p.add_argument("--sweep", required=True, help="sweep id == job-name prefix (§9.3)")
     p.add_argument("--seq", type=int, default=1, help="job sequence within the sweep")

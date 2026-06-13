@@ -12,10 +12,13 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ## [Unreleased]
 
 ### Changed
-- **Default instance is `ml.c5.xlarge` (CPU), not `ml.g5.xlarge`.** This account
-  caps g5 training at 1 concurrent job (CPU quota 20–30); a parallel sweep needs
-  CPU, and the tiny ESOL models train on CPU in minutes. Verified: a 6-wide c5
-  spot sweep ran fully parallel to completion. Override with `--instance`.
+- **Default instance is `ml.c7i.large` (CPU), not `ml.g5.xlarge`.** This account
+  caps g5 training at 1 concurrent job (CPU quota 30); a parallel sweep needs
+  CPU, and the tiny ESOL models train on CPU in minutes. `c7i.large` ($0.107/hr)
+  is the cheapest SageMaker training instance offered in us-west-2 — ~half of
+  c5.xlarge; Graviton/AMD families aren't offered for training here. Verified: a
+  6-wide CPU spot sweep ran fully parallel to completion. Override with
+  `--instance`.
 
 ### Fixed
 - **Board live curve: custom metrics are keyed by `TrainingJobName`**, not the

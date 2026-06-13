@@ -25,12 +25,18 @@ least privilege, not `AmazonSageMakerFullAccess`.
 
 This account caps **`ml.g5.xlarge` at 1 concurrent training job** (both spot and
 on-demand quota = 1), so the parallel sweep — the board's whole point — can't run
-on g5 without a Service Quotas increase. CPU instances (`ml.c5.xlarge`,
-`ml.m5.xlarge`) have a quota of **20–30**, and the tiny ESOL models don't need a
-GPU (they train on CPU in minutes — the local smoke already ran CPU/MPS). So the
-scripts **default to `ml.c5.xlarge`** (resolves a `-cpu-` PyTorch 2.8 DLC).
-Override with `--instance ml.g5.xlarge` for a single GPU job. Verified: a 6-wide
-`ml.c5.xlarge` spot sweep ran fully parallel and completed.
+on g5 without a Service Quotas increase. The tiny ESOL models don't need a GPU
+(they train on CPU in minutes — the local smoke already ran CPU/MPS), and CPU
+instances have a quota of **30**.
+
+Cheapest SageMaker *training* instances in us-west-2 (on-demand, verified via the
+Pricing API 2026-06-12): **`ml.c7i.large` $0.107/hr**, `ml.m5.large`/`ml.m6i.large`
+$0.115, `ml.c5.xlarge` $0.204. Graviton (`c7g`/`c8g`/`m8g`) and AMD (`c7a`/`m7a`)
+are **not offered** for SageMaker training here, so they're not options despite
+cheaper raw EC2. The scripts therefore **default to `ml.c7i.large`** (resolves a
+`-cpu-` PyTorch 2.8 DLC; ~half the cost of the earlier c5.xlarge). Override with
+`--instance ml.g5.xlarge` for a single GPU job. Verified: a 6-wide CPU spot sweep
+ran fully parallel and completed.
 
 ### DLC version note (verify-first #1)
 
@@ -86,7 +92,7 @@ uv run --group cloud --group molecular python scripts/submit.py \
 # Stage 4 — the 3×2 scientific grid (6 jobs), managed spot
 uv run --group cloud --group molecular python scripts/sweep.py \
   --domain molecular --sweep mol-esol-$(date +%Y%m%d)-a --axes feat,depth \
-  --instance ml.c5.xlarge --spot \
+  --instance ml.c7i.large --spot \
   --s3-bucket "$BUCKET" --role-arn "$ROLE" --region us-west-2 --submit
 
 # Board — live, scoped to the sweep (read-only AWS)
