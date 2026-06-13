@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Fixed
+- **§9 tag values now satisfy SageMaker's charset.** `CreateTrainingJob` rejects
+  tag values outside `[\p{L}\p{Z}\p{N}_.:/=+\-@]` — caught at real submit time.
+  `tile_label` separator `·`→` / `; the `rmse↓` sort hint became a separate
+  `MetricGoal=min` tag. Added a contract test guarding every head's tags.
+- `submit.py` ships a per-head `requirements.txt` into the DLC and ignores
+  `.venv/.git/data` from the source tarball; DLC default pinned to the
+  installed-SDK-resolvable `pytorch 2.8 / py312` (the #1 report's 2.10/py313 is
+  "Unsupported" by sagemaker 3.13.1).
+
 ### Added
 - **Cloud submit** (`scripts/submit.py`) — stage 3: one parameterized SageMaker
   training job writing the §9 job tags. Built against the installed sagemaker

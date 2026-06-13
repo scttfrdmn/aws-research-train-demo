@@ -125,7 +125,7 @@ func applyTags(job *Job, tags []smtypes.Tag) {
 		case "Hypothesis":
 			job.Hypothesis = v
 		case "Metric":
-			job.MetricName = strings.TrimRight(v, "↓↑") // strip sort-direction suffix
+			job.MetricName = v // sort direction is the separate MetricGoal tag
 		case "Domain":
 			job.Domain = v
 		case "Instance":

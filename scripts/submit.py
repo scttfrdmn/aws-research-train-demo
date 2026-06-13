@@ -44,11 +44,17 @@ def _job_name(sweep: str, seq: int) -> str:
 
 
 def _tags(head: Head, hp: dict[str, Any], instance: str, spot: bool) -> dict[str, str]:
-    """The §9 job tags. Direction suffix (↓ lower-is-better) on Metric."""
+    """The §9 job tags.
+
+    SageMaker tag VALUES are restricted to [\\p{L}\\p{Z}\\p{N}_.:/=+\\-@] — no
+    arrows, no middle-dot. So sort direction is its own `MetricGoal` tag (not a
+    `↓` suffix), and `tile_label` must use a charset-safe separator.
+    """
     return {
         "Sweep": hp["_sweep"],
         "Hypothesis": head.tile_label(hp),
-        "Metric": f"{head.metric_name()}↓",  # all current heads minimize
+        "Metric": head.metric_name(),
+        "MetricGoal": "min",  # all current heads minimize their metric
         "Domain": head.name,
         "Instance": instance,
         "Spot": "true" if spot else "false",
@@ -107,11 +113,31 @@ def submit(plan: dict[str, Any], args: argparse.Namespace) -> str:
         image_scope="training",
     )
 
+    # Per-head requirements get pip-installed in the DLC before train.py runs
+    # (torch is already in the image). Paths are RELATIVE to source_dir (the SDK
+    # validates they live inside it). ignore_patterns keeps .venv/.git/data out
+    # of the uploaded source tarball.
+    rel_reqs = f"src/heads/{args.domain}/requirements.txt"
+    has_reqs = (REPO / rel_reqs).exists()
+    source = SourceCode(
+        source_dir=str(REPO),
+        entry_script="train.py",
+        requirements=rel_reqs if has_reqs else None,
+        ignore_patterns=[
+            ".venv",
+            ".git",
+            "__pycache__",
+            "*.pt",
+            "checkpoints",
+            "dashboard",
+        ],
+    )
+
     trainer = ModelTrainer(
         training_image=image,
         role=args.role_arn,
         base_job_name=plan["job_name"],
-        source_code=SourceCode(source_dir=str(REPO), entry_script="train.py"),
+        source_code=source,
         compute=Compute(
             instance_type=args.instance,
             instance_count=1,
@@ -164,8 +190,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--role-arn", default=None)
     p.add_argument("--region", default=None)
     p.add_argument("--image", default=None, help="override DLC image URI")
-    p.add_argument("--framework-version", default="2.10")
-    p.add_argument("--py-version", default="py313")
+    # 2.8/py312 is the newest PyTorch DLC resolvable by the installed sagemaker
+    # 3.13.1 image_uris in us-west-2 (verified 2026-06-12; the #1 report's
+    # 2.10/py313 snapshot is "Unsupported" by this SDK).
+    p.add_argument("--framework-version", default="2.8")
+    p.add_argument("--py-version", default="py312")
     p.add_argument("--max-runtime", type=int, default=3600)
     p.add_argument("--wait", action="store_true", help="stream logs until done")
     p.add_argument(

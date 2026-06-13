@@ -193,7 +193,7 @@ binary (tiny Fargate image; runs anywhere). Read-only IAM:
 imports head code. Instead, `sweep.py` (Python — it *can* call the head) bakes the
 head-derived values into each job at submit time:
 
-- `head.tile_label(hp)` → a job **tag** (e.g. `Hypothesis=feat=graph · arch=deep`)
+- `head.tile_label(hp)` → a job **tag** (e.g. `Hypothesis=feat=graph / arch=deep`)
 - `head.metric_name()` → a job **tag** + the job's metric definition (e.g. `Metric=rmse`)
 - a `Sweep=<sweep-id>` tag so the board can scope `ListTrainingJobs` to this sweep
 
@@ -346,15 +346,22 @@ still **never branches on `Domain`** (it's display only).
 | tag key | source | example | board use |
 |---|---|---|---|
 | `Sweep` | sweep id (passed to submitter) | `mol-esol-20260612-a` | group tiles; matches the name prefix (§9.3) |
-| `Hypothesis` | `head.tile_label(hp)` | `feat=graph · arch=deep` | the hypothesis chip on the tile |
-| `Metric` | `head.metric_name()` + direction | `rmse↓` | which series to read + sort direction (↓ = lower-is-better, ↑ = higher) |
+| `Hypothesis` | `head.tile_label(hp)` | `feat=graph / arch=deep` | the hypothesis chip on the tile |
+| `Metric` | `head.metric_name()` | `rmse` | which series to read; the metric-axis label |
+| `MetricGoal` | sort direction | `min` | `min` = lower-is-better, `max` = higher |
 | `Domain` | `head.name` | `molecular` | display only — board stays domain-blind |
 | `Instance` | estimator `instance_type` | `ml.g5.xlarge` | the `· g5.xlarge` line on the tile |
 | `Spot` | `use_spot_instances` | `true` | render the spot / reclaim affordance |
 
-The CloudWatch metric **Name** equals the bare metric string in `Metric` (the
-`↓`/`↑` suffix is stripped before lookup) and matches the estimator's
-`metric_definitions[].Name` — one string, three places, by convention.
+The CloudWatch metric **Name** equals the bare metric string in `Metric` and
+matches the estimator's `metric_definitions[].Name` — one string, three places,
+by convention.
+
+> **Tag-value charset (verified at submit time, 2026-06-12).** SageMaker tag
+> values must match `([\p{L}\p{Z}\p{N}_.:/=+\-@]*)` — **no arrows, no middle
+> dot.** Hence `Hypothesis` uses a ` / ` separator (not `·`) and sort direction
+> is the separate `MetricGoal` tag rather than a `rmse↓` suffix. `tile_label`
+> implementations must stay inside this charset.
 
 ### 9.3 Job-name convention (cheap sweep scoping)
 

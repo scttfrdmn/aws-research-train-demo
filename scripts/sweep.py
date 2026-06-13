@@ -70,8 +70,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--role-arn", default=None)
     p.add_argument("--region", default=None)
     p.add_argument("--image", default=None)
-    p.add_argument("--framework-version", default="2.10")
-    p.add_argument("--py-version", default="py313")
+    p.add_argument("--framework-version", default="2.8")
+    p.add_argument("--py-version", default="py312")
     p.add_argument("--max-runtime", type=int, default=3600)
     p.add_argument(
         "--submit", action="store_true", help="launch the grid (spends money)"

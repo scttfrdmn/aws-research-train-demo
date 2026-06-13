@@ -1,0 +1,6 @@
+# Installed into the SageMaker DLC before train.py runs (SourceCode.requirements).
+# torch is already in the pytorch-training DLC — do NOT list it (avoids a torch
+# reinstall). PyG core-only: no torch-scatter/torch-sparse (verify-first #2).
+rdkit>=2026.3,<2027
+torch-geometric>=2.8,<2.9
+pandas>=2.0

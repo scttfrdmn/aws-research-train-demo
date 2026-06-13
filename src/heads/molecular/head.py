@@ -113,7 +113,9 @@ class MolecularHead:
         ]
 
     def tile_label(self, hp: dict[str, Any]) -> str:
-        return f"feat={hp.get('feat', 'ecfp')} · depth={hp.get('depth', 'shallow')}"
+        # " / " separator (not "·"): the label becomes a SageMaker tag value,
+        # whose charset is [\p{L}\p{Z}\p{N}_.:/=+\-@] — middle-dot is rejected.
+        return f"feat={hp.get('feat', 'ecfp')} / depth={hp.get('depth', 'shallow')}"
 
     def metric_name(self) -> str:
         return "rmse"
