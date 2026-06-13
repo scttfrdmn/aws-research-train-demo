@@ -26,23 +26,24 @@ import (
 // Job is one tile on the board. Field names are the /api/jobs contract the
 // page's JS reads; the values map back to SPEC §9 job tags where noted.
 type Job struct {
-	ID            string    `json:"id"`                      // job name suffix, e.g. run-03
-	Status        string    `json:"status"`                  // PENDING|IN_PROGRESS|COMPLETED|RESUMING
-	Hypothesis    string    `json:"hypothesis"`              // tag: Hypothesis (head.tile_label)
-	MetricName    string    `json:"metricName"`              // tag: Metric (bare, e.g. rmse)
-	MetricValue   *float64  `json:"metricValue,omitempty"`   // latest value (CloudWatch / FinalMetricDataList)
-	Domain        string    `json:"domain"`                  // tag: Domain (display only — board stays domain-blind)
-	Instance      string    `json:"instance"`                // tag: Instance, e.g. g5.xlarge
-	Spot          bool      `json:"spot"`                    // tag: Spot
-	Step          int       `json:"step"`                    // progress
-	TotalSteps    int       `json:"totalSteps"`              //
-	Curve         []float64 `json:"curve"`                   // metric series for the sparkline
-	ReclaimAt     *float64  `json:"reclaimAt,omitempty"`     // x (0..200) of a spot reclaim marker
-	ResumedAtCkpt *int      `json:"resumedAtCkpt,omitempty"` // checkpoint step a RESUMING job rejoined from
-	ElapsedSec    int       `json:"elapsedSec,omitempty"`    // BILLED running seconds (excludes reclaim gaps)
-	WallSec       int       `json:"wallSec,omitempty"`       // wall-clock since first instance (incl. gaps)
-	CostUSD       float64   `json:"costUsd,omitempty"`       // billed running time × spot $/hr (the meter)
-	EffUSDPerHr   float64   `json:"effUsdPerHr,omitempty"`   // cost / wall-clock — effective rate (drops on reclaim)
+	ID             string    `json:"id"`                       // job name suffix, e.g. run-03
+	Status         string    `json:"status"`                   // PENDING|IN_PROGRESS|COMPLETED|RESUMING
+	Hypothesis     string    `json:"hypothesis"`               // tag: Hypothesis (head.tile_label)
+	MetricName     string    `json:"metricName"`               // tag: Metric (bare, e.g. rmse)
+	MetricValue    *float64  `json:"metricValue,omitempty"`    // latest value (CloudWatch / FinalMetricDataList)
+	Domain         string    `json:"domain"`                   // tag: Domain (display only — board stays domain-blind)
+	Instance       string    `json:"instance"`                 // tag: Instance, e.g. g5.xlarge
+	Spot           bool      `json:"spot"`                     // tag: Spot
+	Step           int       `json:"step"`                     // progress
+	TotalSteps     int       `json:"totalSteps"`               //
+	Curve          []float64 `json:"curve"`                    // metric series for the sparkline
+	ReclaimAt      *float64  `json:"reclaimAt,omitempty"`      // x (0..200) of a spot reclaim marker
+	ResumedAtCkpt  *int      `json:"resumedAtCkpt,omitempty"`  // checkpoint step a RESUMING job rejoined from
+	ReclaimSecLeft *int      `json:"reclaimSecLeft,omitempty"` // seconds left in the 2-min spot grace window (RECLAIM state)
+	ElapsedSec     int       `json:"elapsedSec,omitempty"`     // BILLED running seconds (excludes reclaim gaps)
+	WallSec        int       `json:"wallSec,omitempty"`        // wall-clock since first instance (incl. gaps)
+	CostUSD        float64   `json:"costUsd,omitempty"`        // billed running time × spot $/hr (the meter)
+	EffUSDPerHr    float64   `json:"effUsdPerHr,omitempty"`    // cost / wall-clock — effective rate (drops on reclaim)
 }
 
 type feed struct {

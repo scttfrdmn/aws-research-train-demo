@@ -46,7 +46,12 @@ type sweepState struct {
 	runningSec    float64    // accumulated RUNNING seconds (billed; excludes reclaim gaps)
 	lastTick      *time.Time // wall-clock of the previous poll, to add the delta
 	t0            *time.Time // first time we saw an instance — wall-clock t0 for effective rate
+	noticeAt      *time.Time // when we first saw the 2-min interruption notice (countdown t0)
 }
+
+// spotGraceSec is EC2's spot interruption notice window: the instance keeps
+// running this long after the notice before it's reclaimed.
+const spotGraceSec = 120
 
 // approxSpotUSDPerHour is the rough spot price for the cost meter. c7i.large
 // on-demand is $0.107/hr (verified via Pricing API, us-west-2, 2026-06-12);
@@ -104,6 +109,36 @@ func (ec *ec2Client) progress(ctx context.Context, sweep string) *checkpointMeta
 		return nil
 	}
 	return &m
+}
+
+// noticeFired reports whether a running instance's spot request has received an
+// interruption notice — i.e. we're inside the 2-minute grace window (FIS or a
+// real reclaim). The spot request flips to a terminate/stop status code while
+// the instance is still running; that gap is the window.
+func (ec *ec2Client) noticeFired(ctx context.Context, inst *ec2types.Instance) bool {
+	if inst == nil || inst.SpotInstanceRequestId == nil {
+		return false
+	}
+	out, err := ec.ec2.DescribeSpotInstanceRequests(ctx, &ec2.DescribeSpotInstanceRequestsInput{
+		SpotInstanceRequestIds: []string{aws.ToString(inst.SpotInstanceRequestId)},
+	})
+	if err != nil || len(out.SpotInstanceRequests) == 0 {
+		return false
+	}
+	code := ""
+	if s := out.SpotInstanceRequests[0].Status; s != nil {
+		code = aws.ToString(s.Code)
+	}
+	// these codes mean "reclaim committed" — during the grace window the
+	// instance is still running, which is exactly what we want to surface.
+	switch code {
+	case "instance-terminated-by-experiment", "marked-for-termination",
+		"instance-terminated-by-price", "instance-terminated-no-capacity",
+		"instance-terminated-capacity-oversubscribed", "instance-stopped-by-experiment":
+		return true
+	default:
+		return false
+	}
 }
 
 // ec2StateToBoard maps EC2 instance + spot state to the board's tile states.
@@ -186,8 +221,32 @@ func (ec *ec2Client) fetchEC2Sweep(ctx context.Context, sweep string) (feed, err
 		}
 	}
 
+	now := time.Now()
+	currentRunning := current != nil && current.State != nil &&
+		current.State.Name == ec2types.InstanceStateNameRunning
+	// Are we inside the 2-minute spot grace window? Only worth the extra API
+	// call while an instance is actually running.
+	inWindow := currentRunning && ec.noticeFired(ctx, current)
+	if !inWindow {
+		st.noticeAt = nil // window cleared (resumed, or never started)
+	} else if st.noticeAt == nil {
+		st.noticeAt = &now // first poll that saw the notice → countdown t0
+	}
+
 	reclaiming := current != nil && instanceHasInterruptionTag(*current)
 	switch {
+	case inWindow:
+		// THE 2-MINUTE WINDOW: notice fired, instance still running + training.
+		// Distinct red RECLAIM state with a live countdown (mockup's "reclaim").
+		st.sawInstance = true
+		applyEC2Tags(&job, current.Tags)
+		job.Status = "RECLAIM"
+		job.Instance = instanceTypeTag(current.Tags, job.Instance)
+		left := spotGraceSec - int(now.Sub(*st.noticeAt).Seconds())
+		if left < 0 {
+			left = 0
+		}
+		job.ReclaimSecLeft = &left
 	case current == nil && st.sawInstance:
 		// instance gone, replacement not yet visible — the reclaim gap. Hold the
 		// tile in RESUMING rather than dropping it.
@@ -205,7 +264,7 @@ func (ec *ec2Client) fetchEC2Sweep(ctx context.Context, sweep string) (feed, err
 		job.Instance = instanceTypeTag(current.Tags, job.Instance)
 	}
 
-	if job.Status == "RESUMING" && st.reclaimMarker < 0 {
+	if (job.Status == "RECLAIM" || job.Status == "RESUMING") && st.reclaimMarker < 0 {
 		st.reclaimMarker = len(st.curve) // mark where the reclaim cut the curve
 	} else if job.Status == "IN_PROGRESS" {
 		st.reclaimMarker = -1 // resumed cleanly; clear the marker
@@ -217,16 +276,15 @@ func (ec *ec2Client) fetchEC2Sweep(ctx context.Context, sweep string) (feed, err
 		job.ReclaimAt = &rx
 	}
 
-	// Meter: accumulate ONLY time while an instance is actually running — the
-	// reclaim gap (no instance) and PENDING boot don't count, since you're not
-	// billed for training then. t0 is the first sighting (wall-clock); the
-	// effective rate = billed cost / wall-clock, which DROPS on every reclaim
-	// (you spanned more time than you paid for — the spot-savings story).
-	now := time.Now()
+	// Meter: accumulate time while an instance is actually running — including
+	// the RECLAIM window (still billed) but NOT the RESUMING gap (no instance)
+	// or PENDING boot. t0 is the first sighting (wall-clock); the effective rate
+	// = billed cost / wall-clock, which DROPS on every reclaim gap (you spanned
+	// more time than you paid for — the spot-savings story).
 	if st.t0 == nil && st.sawInstance {
 		st.t0 = &now
 	}
-	if job.Status == "IN_PROGRESS" && st.lastTick != nil {
+	if (job.Status == "IN_PROGRESS" || job.Status == "RECLAIM") && st.lastTick != nil {
 		st.runningSec += now.Sub(*st.lastTick).Seconds()
 	}
 	st.lastTick = &now

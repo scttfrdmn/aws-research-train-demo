@@ -24,6 +24,7 @@
   @media(max-width:620px){.grid{grid-template-columns:repeat(2,1fr);}}
   .tile{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:11px 12px;position:relative;overflow:hidden;}
   .tile.run{border-color:#1f3a4d;} .tile.resume{border-color:#5a4410;} .tile.done{border-color:#1f4a31;}
+  .tile.reclaimw{border-color:#5a1717;}
   .rid{font-family:var(--mono);font-size:11px;color:var(--dim);padding-right:92px;}
   .hyp{font-family:var(--mono);font-size:12px;margin:3px 0 8px;} .hyp .k{color:var(--running);}
   .badge{position:absolute;top:11px;right:11px;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;}
@@ -31,6 +32,7 @@
   .b-done{background:rgba(63,208,122,.13);color:var(--done);}
   .b-pend{background:rgba(110,118,129,.15);color:var(--pending);}
   .b-res{background:rgba(227,160,8,.14);color:var(--resume);}
+  .b-rec{background:rgba(248,81,73,.16);color:var(--interrupt);}
   .spark{height:46px;width:100%;display:block;}
   .foot{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:7px;}
   .foot .m{color:var(--ink);}
@@ -77,6 +79,7 @@ const STATUS = {
   PENDING:       ['',        'b-pend', 'PENDING',      null,                  false],
   IN_PROGRESS:   ['run',     'b-run',  'IN PROGRESS',  'var(--running)',      true ],
   COMPLETED:     ['done',    'b-done', 'COMPLETED',    'var(--done)',         false],
+  RECLAIM:       ['reclaimw','b-rec',  'RECLAIM ⚠',    'var(--interrupt)',    true ],
   RESUMING:      ['resume',  'b-res',  'RESUMING ⟲',   'var(--resume)',       true ],
 };
 
@@ -134,14 +137,26 @@ function tile(job){
     : `step ${job.step ?? 0}`;
   const footL = (job.status === 'RESUMING' && job.resumedAtCkpt != null)
     ? `resumed @ ckpt ${job.resumedAtCkpt}` : step;
+  // RECLAIM: badge carries a live "2:00" countdown of the spot grace window,
+  // and the foot line states the reclaim was fired.
+  const inReclaim = job.status === 'RECLAIM' && job.reclaimSecLeft != null;
+  const badgeTxt = inReclaim ? `${btext} ${mmss(job.reclaimSecLeft)}` : btext;
+  const footTxt = inReclaim ? `reclaim fired · terminating` : footL;
+  const cd = inReclaim ? ` data-countdown="${job.reclaimSecLeft}"` : '';
   return `<div class="tile ${tcls}" data-id="${esc(job.id)}">`
-    + `<span class="badge ${bcls}${pulse ? ' pulse' : ''}">${btext}</span>`
+    + `<span class="badge ${bcls}${pulse ? ' pulse' : ''}"${cd}>${badgeTxt}</span>`
     + `<div class="rid">${esc(rid)}</div>`
     + `<div class="hyp">${esc(job.hypothesis || '')}</div>`
     + spark(job)
-    + `<div class="foot"><span>${esc(footL)}</span><span class="m">${esc(metric)}</span></div>`
+    + `<div class="foot"><span>${esc(footTxt)}</span><span class="m">${esc(metric)}</span></div>`
     + meterLine(job)
     + `</div>`;
+}
+
+// m:ss from seconds (for the reclaim countdown)
+function mmss(s){
+  s = Math.max(0, Math.floor(s));
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
 }
 
 // hh:mm:ss from seconds
@@ -193,6 +208,12 @@ function tick(){
     t.textContent = '⏱ ' + hms(e);
     const c = t.parentElement.querySelector('.c');
     if(c){ const v = (+c.dataset.cost) + SPOT_PER_SEC; c.dataset.cost = v; c.textContent = '$' + v.toFixed(4); }
+  });
+  // count down the 2-minute reclaim window on the badge
+  document.querySelectorAll('.badge[data-countdown]').forEach(b => {
+    let left = (+b.dataset.countdown) - 1; if(left < 0) left = 0;
+    b.dataset.countdown = left;
+    b.textContent = 'RECLAIM ⚠ ' + mmss(left);
   });
 }
 
