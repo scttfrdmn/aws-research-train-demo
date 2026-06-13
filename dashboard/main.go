@@ -69,22 +69,33 @@ func sampleFeed() feed {
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "listen address (loopback for the Studio proxy)")
 	tmpl := flag.String("template", "", "path to board_template.html (default: next to the binary / CWD)")
-	sweep := flag.String("sweep", "", "sweep id to scope live ListTrainingJobs (empty = sample feed)")
+	sweep := flag.String("sweep", "", "SageMaker sweep id to scope live ListTrainingJobs (empty = sample feed)")
+	ec2Sweep := flag.String("ec2-sweep", "", "EC2 self-managed-spot sweep id (reads instances by Sweep tag; stage-5 FIS demo)")
 	region := flag.String("region", "", "AWS region for live reads (default: SDK chain)")
 	flag.Parse()
 
-	// Live mode only when a sweep is named; otherwise serve the sample feed so
-	// the approved view renders with no AWS access. All AWS calls are read-only.
+	// Three modes, all read-only: --sweep (SageMaker jobs), --ec2-sweep (EC2
+	// self-managed spot, for the FIS reclaim demo), or neither (sample feed so
+	// the approved view renders with no AWS access).
 	var live *liveClient
-	if *sweep != "" {
+	var ec2c *ec2Client
+	switch {
+	case *ec2Sweep != "":
+		c, err := newEC2Client(context.Background(), *region)
+		if err != nil {
+			log.Fatalf("ec2 client: %v", err)
+		}
+		ec2c = c
+		log.Printf("ec2 mode: scoping spot sweep %q by tag (read-only)", *ec2Sweep)
+	case *sweep != "":
 		lc, err := newLiveClient(context.Background(), *region)
 		if err != nil {
 			log.Fatalf("live client: %v", err)
 		}
 		live = lc
-		log.Printf("live mode: scoping sweep %q (read-only)", *sweep)
-	} else {
-		log.Printf("sample mode: no --sweep given, serving sample feed")
+		log.Printf("live mode: scoping SageMaker sweep %q (read-only)", *sweep)
+	default:
+		log.Printf("sample mode: no --sweep/--ec2-sweep given, serving sample feed")
 	}
 
 	templatePath := *tmpl
@@ -111,7 +122,15 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		out := sampleFeed()
-		if live != nil {
+		switch {
+		case ec2c != nil:
+			f, err := ec2c.fetchEC2Sweep(r.Context(), *ec2Sweep)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			out = f
+		case live != nil:
 			f, err := live.fetchSweep(r.Context(), *sweep)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadGateway)

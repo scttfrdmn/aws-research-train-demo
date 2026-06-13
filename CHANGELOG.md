@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   "Unsupported" by sagemaker 3.13.1).
 
 ### Added
+- **Stage 5 real-reclaim path (`ec2/` + board `--ec2-sweep`).** AWS FIS can't
+  interrupt SageMaker *managed* spot (those instances live in a SageMaker service
+  account), so a true FIS-driven reclaim runs training on a self-managed EC2 spot
+  instance under an ASG (desired=1): `ec2/launch.sh` (launch template + ASG,
+  user-data runs the same DLC + `train.py` resuming from S3), `ec2/fis.sh` (fires
+  `aws:ec2:send-spot-instance-interruptions`), `ec2/teardown.sh`. The board gains
+  an `--ec2-sweep` read path (`dashboard/ec2.go`) that renders EC2 instances from
+  the **same §9 tags** — the contract is the seam across both executors. The
+  instance interruption → `RESUMING` tile, then the ASG replacement resumes.
 - **Cloud submit** (`scripts/submit.py`) — stage 3: one parameterized SageMaker
   training job writing the §9 job tags. Built against the installed sagemaker
   3.13.1 `ModelTrainer` API (the classic `PyTorch` estimator is gone — see #1).

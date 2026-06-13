@@ -99,6 +99,47 @@ uv run --group cloud --group molecular python scripts/sweep.py \
 cd dashboard && go run . --sweep mol-esol-$(date +%Y%m%d)-a --region us-west-2
 ```
 
+## Stage 5 — real spot reclaim via FIS (self-managed EC2, Option A)
+
+**Why not SageMaker managed spot:** verified 2026-06-12 — managed-spot training
+instances run in a **SageMaker service-owned account**, so AWS FIS (which targets
+EC2 instances in *your* account) cannot interrupt them, and there's no first-party
+API to force a managed-spot interruption. To show a **real** reclaim +
+checkpoint-resume, training runs on a plain EC2 spot instance we own. The §9 tags
+are the seam: the instance carries the same `Sweep`/`Hypothesis`/`Metric`/… tags,
+so the board renders it identically (see the board's `--ec2-sweep` mode).
+
+| Resource | Value |
+|---|---|
+| EC2 instance role / profile | `aws-research-train-demo-ec2` (S3 rw to bucket, ECR pull, CloudWatch) |
+| FIS experiment role | `aws-research-train-demo-fis` (`ec2:SendSpotInstanceInterruptions` + describe) |
+| Launch template | `aws-research-train-demo-lt` (AL2023, spot, user-data runs the DLC) |
+| Auto Scaling Group | `aws-research-train-demo-asg` (desired=1, **no** capacity-rebalance) |
+| Instance type | `c7i.large` spot (plain EC2, no `ml.` prefix) |
+| Checkpoint prefix | `s3://…/<sweep>/ec2/checkpoints/` |
+
+The ASG holds desired=1: when the instance is interrupted, the ASG launches a
+replacement that resumes from the S3 checkpoint. Capacity-rebalance is **off** so
+AWS rebalance *recommendations* don't churn the instance before we fire FIS.
+
+> **The ASG keeps a spot instance running until torn down** (unlike SageMaker
+> jobs, which end on their own). ~$0.03/hr; run `ec2/teardown.sh` when done.
+
+```bash
+export AWS_PROFILE=aws AWS_REGION=us-west-2
+ec2/launch.sh                      # IAM/profile already exist; creates LT + ASG + instance
+# watch it (the board's second read path):
+cd dashboard && go run . --ec2-sweep mol-esol-ec2spot --region us-west-2
+# fire a REAL 2-minute interruption (billable, deliberate):
+ec2/fis.sh                         # tile goes reclaim → RESUMING → green as ASG resumes
+ec2/teardown.sh                    # remove ASG + LT + FIS templates (keeps shared bucket/role)
+```
+
+> **Curve/metric on the EC2 path:** the EC2 training run has no SageMaker
+> log-scraper pushing metrics to CloudWatch, so the EC2 tile renders from
+> instance **state** (the red→amber→green reclaim transition — which is the whole
+> stage-5 point), not a live RMSE curve. The SageMaker path keeps the curve.
+
 ## Teardown
 
 ```bash
