@@ -38,7 +38,15 @@ weather = [
 genomics = [
     "logomaker>=0.8.7",
 ]
-# llm group is added when that head lands (v0.6).
+# LLM head — see issue #11 (verify-first). trl SFTTrainer + peft LoRA on a small
+# open-weight instruct model (SmolLM2-135M-Instruct, Apache-2.0, not gated). trl
+# transitively brings accelerate+datasets — kept out of core. transformers<6 pin
+# guards against a future v6 break.
+llm = [
+    "transformers>=5,<6",
+    "peft>=0.19",
+    "trl>=1.6",
+]
 
 # Cloud execution (stages 3+): managed jobs, spot, checkpointing, tracking.
 # Kept out of core so local author/smoke needs no AWS SDK. local extra brings
@@ -93,6 +101,7 @@ strict = true
 module = [
     "rdkit.*", "torch_geometric.*", "sagemaker.*", "boto3.*",
     "logomaker.*", "pandas.*",
+    "transformers.*", "peft.*", "trl.*", "datasets.*",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"

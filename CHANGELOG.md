@@ -42,6 +42,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   "Unsupported" by sagemaker 3.13.1).
 
 ### Added
+- **LLM head** (`src/heads/llm/`) — small open-weight LoRA fine-tune, the fourth
+  head and the proof the spine is genuinely domain-blind (SPEC §3; MINOR bump):
+  it trains via the **HF `trl` SFTTrainer + PEFT** stack — a completely different
+  path from the torch-loop heads — yet reports through the same `MetricSink`
+  (HF `TrainerCallback` → sink) and checkpoints to the same `Run` contract. Base
+  `SmolLM2-135M-Instruct` (Apache-2.0, not gated, #11); sweep axis lr × rank
+  (kept honest as a CS knob); metric eval_loss; viewer = base vs tuned side by
+  side. Tiny "always answer in JSON" task: base answers prose, tuned emits
+  `{"answer": "..."}` — verified naked-eye delta. Smokes in ~3s on CPU (2 LoRA
+  steps); saves a ~1.8 MB adapter, not the base. Spine untouched except one
+  registry entry. `llm` uv group (transformers/peft/trl).
 - **Genomics head** (`src/heads/genomics/`) — DNA → regulatory signal, the third
   head against the unchanged contract (SPEC §3; MINOR bump). Sweep axis
   receptive-field {small, large} × arch {cnn, dilated}; metric auROC
