@@ -16,18 +16,29 @@ account `942542972736` (profile `aws`), region **`us-west-2`**.
 | Checkpoint prefix | `s3://…/<sweep-id>/<job-name>/checkpoints/` (per job) |
 | Execution role | `arn:aws:iam::942542972736:role/aws-research-train-demo-exec` |
 | Role inline policy | `training-access` — S3 (named bucket **and** the SDK's default `sagemaker-us-west-2-<acct>` session bucket), ECR pull, CloudWatch logs/metrics |
-| DLC image | `pytorch-training:2.8-gpu-py312` (resolved via `image_uris.retrieve`) |
+| DLC image | `pytorch-training:2.8-cpu-py312` (resolved via `image_uris.retrieve`; `-gpu-` variant when `--instance ml.g5.xlarge`) |
 
 The role trusts `sagemaker.amazonaws.com` only and is scoped to this bucket —
 least privilege, not `AmazonSageMakerFullAccess`.
+
+### Instance choice: CPU, not GPU (account quota reality)
+
+This account caps **`ml.g5.xlarge` at 1 concurrent training job** (both spot and
+on-demand quota = 1), so the parallel sweep — the board's whole point — can't run
+on g5 without a Service Quotas increase. CPU instances (`ml.c5.xlarge`,
+`ml.m5.xlarge`) have a quota of **20–30**, and the tiny ESOL models don't need a
+GPU (they train on CPU in minutes — the local smoke already ran CPU/MPS). So the
+scripts **default to `ml.c5.xlarge`** (resolves a `-cpu-` PyTorch 2.8 DLC).
+Override with `--instance ml.g5.xlarge` for a single GPU job. Verified: a 6-wide
+`ml.c5.xlarge` spot sweep ran fully parallel and completed.
 
 ### DLC version note (verify-first #1)
 
 The installed `sagemaker` 3.13.1 `image_uris.retrieve` resolves **PyTorch 2.8 /
 py312** as the newest in us-west-2; the report's `2.10/py313` snapshot returns
 "Unsupported". `submit.py` / `sweep.py` default to `--framework-version 2.8
---py-version py312` accordingly. A GPU instance (default `ml.g5.xlarge`) is
-required — the DLC is a `-gpu-` image.
+--py-version py312` accordingly. `retrieve` picks the `-cpu-` or `-gpu-` DLC
+from the instance type, so the CPU default just works.
 
 ## How it was created
 
@@ -75,7 +86,7 @@ uv run --group cloud --group molecular python scripts/submit.py \
 # Stage 4 — the 3×2 scientific grid (6 jobs), managed spot
 uv run --group cloud --group molecular python scripts/sweep.py \
   --domain molecular --sweep mol-esol-$(date +%Y%m%d)-a --axes feat,depth \
-  --instance ml.g5.xlarge --spot \
+  --instance ml.c5.xlarge --spot \
   --s3-bucket "$BUCKET" --role-arn "$ROLE" --region us-west-2 --submit
 
 # Board — live, scoped to the sweep (read-only AWS)

@@ -63,7 +63,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--sweep", required=True, help="sweep id == job-name prefix (§9.3)")
     p.add_argument("--axes", default=None, help="comma list; default = all head axes")
     p.add_argument("--limit", type=int, default=None, help="cap the grid size")
-    p.add_argument("--instance", default="ml.g5.xlarge")
+    # CPU default — see submit.py: g5 quota is 1, CPU quota 20-30; a parallel
+    # sweep needs CPU and the ESOL models are tiny.
+    p.add_argument("--instance", default="ml.c5.xlarge")
     p.add_argument("--spot", action="store_true")
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--s3-bucket", default=None)

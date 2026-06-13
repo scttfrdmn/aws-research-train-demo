@@ -12,6 +12,7 @@ import re
 
 import pytest
 
+from heads.base import Head
 from spine import registry
 
 # SageMaker tag-value charset. \w covers letters/digits/underscore; the class
@@ -21,7 +22,7 @@ from spine import registry
 _TAG_VALUE = re.compile(r"^[\w\s.:/=+\-@]*$", re.UNICODE)
 
 
-def _load_or_skip(name: str):
+def _load_or_skip(name: str) -> Head:
     try:
         return registry.load(name)
     except ImportError as exc:
