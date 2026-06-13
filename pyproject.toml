@@ -31,7 +31,14 @@ molecular = [
 weather = [
     "matplotlib>=3.8",
 ]
-# genomics / llm groups are added when those heads land (v0.5+).
+# Genomics head — see issue #10 (verify-first). Plain 1D CNN over synthetic
+# implanted-motif DNA: torch+numpy only for train/metric (auROC hand-rolled to
+# stay pure). logomaker (the standard sequence-logo lib) for the motif-logo
+# viewer; it pulls matplotlib+pandas.
+genomics = [
+    "logomaker>=0.8.7",
+]
+# llm group is added when that head lands (v0.6).
 
 # Cloud execution (stages 3+): managed jobs, spot, checkpointing, tracking.
 # Kept out of core so local author/smoke needs no AWS SDK. local extra brings
@@ -83,7 +90,10 @@ strict = true
 # Heads bring untyped scientific libs; don't fail the contract over their stubs.
 # follow_imports=skip keeps mypy from parsing rdkit's (malformed) bundled stubs.
 [[tool.mypy.overrides]]
-module = ["rdkit.*", "torch_geometric.*", "sagemaker.*", "boto3.*"]
+module = [
+    "rdkit.*", "torch_geometric.*", "sagemaker.*", "boto3.*",
+    "logomaker.*", "pandas.*",
+]
 ignore_missing_imports = true
 follow_imports = "skip"
 follow_imports_for_stubs = true

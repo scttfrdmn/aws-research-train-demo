@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 _REGISTRY: dict[str, str] = {
     "molecular": "heads.molecular.head:HEAD",
     "weather": "heads.weather.head:HEAD",
+    "genomics": "heads.genomics.head:HEAD",
 }
 
 

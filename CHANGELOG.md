@@ -42,6 +42,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   "Unsupported" by sagemaker 3.13.1).
 
 ### Added
+- **Genomics head** (`src/heads/genomics/`) — DNA → regulatory signal, the third
+  head against the unchanged contract (SPEC §3; MINOR bump). Sweep axis
+  receptive-field {small, large} × arch {cnn, dilated}; metric auROC
+  (hand-rolled, torch+numpy-pure); viewer = input-gradient saliency + motif logo
+  (`logomaker`). **Phantom-science synthetic data** — implant a GATA-box motif in
+  positives, scrambled in negatives, generated in code (zero license friction,
+  #10). Plain 1D CNN, no genomics lib. Smokes in ~2s; behavior-delta real
+  (saliency mass on the motif 7.9%→35.8%, a 4.6× concentration after training).
+  Spine untouched except one registry entry. `genomics` uv group (`logomaker`).
 - **Weather head** (`src/heads/weather/`) — spatial field prediction, the second
   head against the unchanged contract (SPEC §3; a MINOR bump). Sweep axis
   operator {fno, unet} × resolution; metric field RMSE; viewer = predicted |
