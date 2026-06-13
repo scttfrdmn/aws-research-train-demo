@@ -136,9 +136,11 @@ func applyTags(job *Job, tags []smtypes.Tag) {
 	}
 }
 
-// metricSeries pulls the named metric's recent datapoints from CloudWatch,
-// keyed by the Host dimension (#1 §4). Returns nil on any error — the tile
-// renders fine without a curve.
+// metricSeries pulls the named metric's recent datapoints from CloudWatch.
+// Custom (regex-scraped) metrics are keyed by the **TrainingJobName** dimension
+// — verified against a real job (issue #8); the system-metric Host dimension
+// from the #1 report does NOT apply to custom metric_definitions. Returns nil
+// on any error — the tile renders fine from FinalMetricDataList without a curve.
 func (lc *liveClient) metricSeries(ctx context.Context, jobName, metric string) []float64 {
 	end := time.Now()
 	start := end.Add(-6 * time.Hour)
@@ -152,8 +154,8 @@ func (lc *liveClient) metricSeries(ctx context.Context, jobName, metric string) 
 					Namespace:  aws.String(cwNamespace),
 					MetricName: aws.String(metric),
 					Dimensions: []cwtypes.Dimension{{
-						Name:  aws.String("Host"),
-						Value: aws.String(jobName + "/algo-1"),
+						Name:  aws.String("TrainingJobName"),
+						Value: aws.String(jobName),
 					}},
 				},
 				Period: aws.Int32(60),
