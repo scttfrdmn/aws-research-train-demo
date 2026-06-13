@@ -71,6 +71,7 @@ func main() {
 	tmpl := flag.String("template", "", "path to board_template.html (default: next to the binary / CWD)")
 	sweep := flag.String("sweep", "", "SageMaker sweep id to scope live ListTrainingJobs (empty = sample feed)")
 	ec2Sweep := flag.String("ec2-sweep", "", "EC2 self-managed-spot sweep id (reads instances by Sweep tag; stage-5 FIS demo)")
+	s3Bucket := flag.String("s3-bucket", "aws-research-train-demo-942542972736-us-west-2", "checkpoint bucket (EC2 mode reads <sweep>/ec2/checkpoints/meta.json for progress)")
 	region := flag.String("region", "", "AWS region for live reads (default: SDK chain)")
 	flag.Parse()
 
@@ -81,7 +82,7 @@ func main() {
 	var ec2c *ec2Client
 	switch {
 	case *ec2Sweep != "":
-		c, err := newEC2Client(context.Background(), *region)
+		c, err := newEC2Client(context.Background(), *region, *s3Bucket)
 		if err != nil {
 			log.Fatalf("ec2 client: %v", err)
 		}

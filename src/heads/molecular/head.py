@@ -188,11 +188,17 @@ class MolecularHead:
         depth: str,
         epoch: int = 0,
         opt: torch.optim.Optimizer | None = None,
+        total: int = 0,
+        rmse: float | None = None,
     ) -> None:
         """Persist model + optimizer + epoch to the (S3-synced) checkpoint dir.
 
         Including the optimizer state and last epoch is what lets a spot-reclaimed
         job *resume* mid-training rather than restart (stage 5, SPEC §4).
+
+        ``meta.json`` doubles as the progress record the board's EC2 read path
+        reads (a self-managed instance has no SageMaker log-scraper feeding
+        CloudWatch): epoch/total drive the tile's `step N/total`, rmse the metric.
         """
         Path(run.checkpoint_dir).mkdir(parents=True, exist_ok=True)
         path = Path(run.checkpoint_dir) / "model.pt"
@@ -205,16 +211,16 @@ class MolecularHead:
         if opt is not None:
             payload["optimizer"] = opt.state_dict()
         torch.save(payload, path)
-        (Path(run.checkpoint_dir) / "meta.json").write_text(
-            json.dumps(
-                {
-                    "feat": feat,
-                    "depth": depth,
-                    "metric": self.metric_name(),
-                    "epoch": epoch,
-                }
-            )
-        )
+        meta: dict[str, Any] = {
+            "feat": feat,
+            "depth": depth,
+            "metric": self.metric_name(),
+            "epoch": epoch,
+            "total": total,
+        }
+        if rmse is not None:
+            meta["rmse"] = rmse
+        (Path(run.checkpoint_dir) / "meta.json").write_text(json.dumps(meta))
 
     def _resume(
         self,
@@ -267,10 +273,10 @@ class MolecularHead:
             rmse = float(torch.sqrt(loss.detach()))
             run.metric_sink.log(epoch, {self.metric_name(): rmse})
             if epoch % self._ckpt_every == 0:
-                self._checkpoint(run, model, "ecfp", depth, epoch, opt)
+                self._checkpoint(run, model, "ecfp", depth, epoch, opt, total, rmse)
             if self._epoch_delay:
                 time.sleep(self._epoch_delay)
-        self._checkpoint(run, model, "ecfp", depth, total - 1, opt)
+        self._checkpoint(run, model, "ecfp", depth, total - 1, opt, total, rmse)
 
     def _fit_graph(
         self,
@@ -307,10 +313,10 @@ class MolecularHead:
             rmse = float(np.sqrt(sq_err / max(n, 1)))
             run.metric_sink.log(epoch, {self.metric_name(): rmse})
             if epoch % self._ckpt_every == 0:
-                self._checkpoint(run, model, feat, depth, epoch, opt)
+                self._checkpoint(run, model, feat, depth, epoch, opt, total, rmse)
             if self._epoch_delay:
                 time.sleep(self._epoch_delay)
-        self._checkpoint(run, model, feat, depth, total - 1, opt)
+        self._checkpoint(run, model, feat, depth, total - 1, opt, total, rmse)
 
 
 # The registry loads this attribute (see spine/registry.py).

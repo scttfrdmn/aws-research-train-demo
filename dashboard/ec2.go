@@ -6,25 +6,45 @@
 // job, so the board reads it a different way — but through the SAME §9 tags, so
 // a tile looks identical. This file is that second read path.
 //
-// All calls are read-only: DescribeInstances + CloudWatch GetMetricData.
+// All calls are read-only: DescribeInstances + S3 GetObject (the checkpoint
+// meta.json, which doubles as the progress record since a self-managed instance
+// has no SageMaker log-scraper feeding CloudWatch).
 package main
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type ec2Client struct {
-	ec2 *ec2.Client
-	cw  *cloudwatch.Client
+	ec2    *ec2.Client
+	s3     *s3.Client
+	bucket string // checkpoint bucket; meta.json holds live progress
+	mu     sync.Mutex
+	state  map[string]*sweepState // per-sweep accumulated view (survives swaps)
 }
 
-func newEC2Client(ctx context.Context, region string) (*ec2Client, error) {
+// sweepState is what makes the EC2 tile stable across instance swaps: the ASG
+// holds desired=1, so a sweep is ONE logical training job even as the backing
+// instance is reclaimed and replaced. The board accumulates the curve here
+// (self-managed EC2 has no CloudWatch series) and remembers a reclaim so the
+// tile shows RESUMING through the gap instead of vanishing.
+type sweepState struct {
+	curve         []float64
+	lastEpoch     int
+	reclaimMarker int  // curve index where the last reclaim happened (-1 = none)
+	sawInstance   bool // have we ever seen a running instance for this sweep?
+}
+
+func newEC2Client(ctx context.Context, region, bucket string) (*ec2Client, error) {
 	opts := []func(*config.LoadOptions) error{}
 	if region != "" {
 		opts = append(opts, config.WithRegion(region))
@@ -33,7 +53,47 @@ func newEC2Client(ctx context.Context, region string) (*ec2Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ec2Client{ec2: ec2.NewFromConfig(cfg), cw: cloudwatch.NewFromConfig(cfg)}, nil
+	return &ec2Client{
+		ec2:    ec2.NewFromConfig(cfg),
+		s3:     s3.NewFromConfig(cfg),
+		bucket: bucket,
+		state:  map[string]*sweepState{},
+	}, nil
+}
+
+// checkpointMeta mirrors the head's meta.json (src/heads/molecular/head.py).
+type checkpointMeta struct {
+	Epoch  int     `json:"epoch"`
+	Total  int     `json:"total"`
+	Metric string  `json:"metric"`
+	RMSE   float64 `json:"rmse"`
+}
+
+// progress reads <bucket>/<sweep>/ec2/checkpoints/meta.json — the live progress
+// record the training loop writes every few epochs. Returns nil if absent (the
+// instance is still booting / hasn't checkpointed yet), so the tile still
+// renders from instance state.
+func (ec *ec2Client) progress(ctx context.Context, sweep string) *checkpointMeta {
+	if ec.bucket == "" {
+		return nil
+	}
+	key := sweep + "/ec2/checkpoints/meta.json"
+	out, err := ec.s3.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(ec.bucket), Key: aws.String(key),
+	})
+	if err != nil {
+		return nil
+	}
+	defer out.Body.Close()
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil
+	}
+	var m checkpointMeta
+	if json.Unmarshal(body, &m) != nil {
+		return nil
+	}
+	return &m
 }
 
 // ec2StateToBoard maps EC2 instance + spot state to the board's tile states.
@@ -72,32 +132,104 @@ func (ec *ec2Client) fetchEC2Sweep(ctx context.Context, sweep string) (feed, err
 		return feed{}, err
 	}
 
-	jobs := []Job{}
-	for _, r := range out.Reservations {
-		for _, inst := range r.Instances {
-			id := aws.ToString(inst.InstanceId)
-			job := Job{ID: id, Spot: inst.InstanceLifecycle == ec2types.InstanceLifecycleTypeSpot}
-
-			interruptionPending := inst.SpotInstanceRequestId != nil &&
-				instanceHasInterruptionTag(inst)
-			var stateName ec2types.InstanceStateName
-			if inst.State != nil {
-				stateName = inst.State.Name
+	// Pick the most-relevant instance for this sweep: a running one if any, else
+	// the latest by launch time (so a reclaim-in-progress instance still shows).
+	var current *ec2types.Instance
+	for i := range out.Reservations {
+		for j := range out.Reservations[i].Instances {
+			inst := &out.Reservations[i].Instances[j]
+			if current == nil {
+				current = inst
+				continue
 			}
-			job.Status = ec2StateToBoard(stateName, interruptionPending)
-
-			applyEC2Tags(&job, inst.Tags)
-			if job.MetricName != "" && job.Status != "PENDING" {
-				job.Curve = ec.metricSeries(ctx, id, job.MetricName)
-				if len(job.Curve) > 0 {
-					v := job.Curve[len(job.Curve)-1]
-					job.MetricValue = &v
-				}
+			// prefer running; otherwise the more recently launched
+			curRunning := current.State != nil && current.State.Name == ec2types.InstanceStateNameRunning
+			instRunning := inst.State != nil && inst.State.Name == ec2types.InstanceStateNameRunning
+			if instRunning && !curRunning {
+				current = inst
+			} else if instRunning == curRunning && inst.LaunchTime != nil &&
+				(current.LaunchTime == nil || inst.LaunchTime.After(*current.LaunchTime)) {
+				current = inst
 			}
-			jobs = append(jobs, job)
 		}
 	}
-	return feed{Sweep: sweep, Jobs: jobs}, nil
+
+	meta := ec.progress(ctx, sweep)
+
+	ec.mu.Lock()
+	st := ec.state[sweep]
+	if st == nil {
+		st = &sweepState{reclaimMarker: -1}
+		ec.state[sweep] = st
+	}
+
+	// One stable tile per sweep — the ASG holds desired=1, so a sweep is ONE
+	// logical training job across instance swaps. The tile never disappears; it
+	// shows the reclaim instead (mirrors the mockup's run-05).
+	job := Job{ID: sweep, Spot: true}
+	if meta != nil {
+		applyMeta(&job, meta)
+		// accumulate the curve as epochs advance (no CloudWatch on self-managed)
+		if meta.RMSE != 0 && meta.Epoch != st.lastEpoch {
+			st.curve = append(st.curve, meta.RMSE)
+			st.lastEpoch = meta.Epoch
+		}
+	}
+
+	reclaiming := current != nil && instanceHasInterruptionTag(*current)
+	switch {
+	case current == nil && st.sawInstance:
+		// instance gone, replacement not yet visible — the reclaim gap. Hold the
+		// tile in RESUMING rather than dropping it.
+		job.Status = "RESUMING"
+	case current == nil:
+		job.Status = "PENDING"
+	default:
+		st.sawInstance = true
+		applyEC2Tags(&job, current.Tags)
+		var stateName ec2types.InstanceStateName
+		if current.State != nil {
+			stateName = current.State.Name
+		}
+		job.Status = ec2StateToBoard(stateName, reclaiming)
+		job.Instance = instanceTypeTag(current.Tags, job.Instance)
+	}
+
+	if job.Status == "RESUMING" && st.reclaimMarker < 0 {
+		st.reclaimMarker = len(st.curve) // mark where the reclaim cut the curve
+	} else if job.Status == "IN_PROGRESS" {
+		st.reclaimMarker = -1 // resumed cleanly; clear the marker
+	}
+
+	job.Curve = append([]float64(nil), st.curve...)
+	if st.reclaimMarker >= 0 && st.reclaimMarker <= len(job.Curve) {
+		rx := float64(st.reclaimMarker) / float64(max(len(job.Curve)-1, 1)) * 200
+		job.ReclaimAt = &rx
+	}
+	ec.mu.Unlock()
+
+	return feed{Sweep: sweep, Jobs: []Job{job}}, nil
+}
+
+// applyMeta sets step/total/metric from the checkpoint progress record.
+func applyMeta(job *Job, m *checkpointMeta) {
+	job.Step = m.Epoch
+	job.TotalSteps = m.Total
+	job.MetricName = m.Metric
+	if m.RMSE != 0 {
+		v := m.RMSE
+		job.MetricValue = &v
+	}
+}
+
+// instanceTypeTag prefers the Instance tag value, falling back to a default.
+func instanceTypeTag(tags []ec2types.Tag, fallback string) string {
+	for _, t := range tags {
+		if aws.ToString(t.Key) == "Instance" {
+			return aws.ToString(t.Value)
+		}
+	}
+	return fallback
 }
 
 // instanceHasInterruptionTag reports whether a reclaim is in flight. EC2 doesn't
@@ -134,13 +266,4 @@ func applyEC2Tags(job *Job, tags []ec2types.Tag) {
 			job.Spot = v == "true"
 		}
 	}
-}
-
-// metricSeries pulls the metric series the training loop publishes to CloudWatch
-// (the userdata runs the same train.py; the metric carries the instance id as
-// the TrainingJobName-equivalent dimension). Best-effort; nil on any error.
-func (ec *ec2Client) metricSeries(ctx context.Context, instanceID, metric string) []float64 {
-	// The EC2 path's training publishes under the same namespace with the
-	// instance id as dimension; if absent, the tile still renders from state.
-	return nil // populated once the EC2 metric publish is wired (see notes)
 }

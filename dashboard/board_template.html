@@ -23,7 +23,7 @@
   @media(max-width:620px){.grid{grid-template-columns:repeat(2,1fr);}}
   .tile{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:11px 12px;position:relative;overflow:hidden;}
   .tile.run{border-color:#1f3a4d;} .tile.resume{border-color:#5a4410;} .tile.done{border-color:#1f4a31;}
-  .rid{font-family:var(--mono);font-size:11px;color:var(--dim);}
+  .rid{font-family:var(--mono);font-size:11px;color:var(--dim);padding-right:92px;}
   .hyp{font-family:var(--mono);font-size:12px;margin:3px 0 8px;} .hyp .k{color:var(--running);}
   .badge{position:absolute;top:11px;right:11px;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;}
   .b-run{background:rgba(63,182,255,.13);color:var(--running);}
@@ -124,7 +124,11 @@ function tile(job){
   const rid = [job.id, job.instance, job.spot ? 'spot' : null].filter(Boolean).join(' · ');
   const metric = (job.metricValue == null) ? '—'
     : `${esc(job.metricName || '').toUpperCase()} ${(+job.metricValue).toFixed(2)}`;
-  const step = `step ${job.step ?? 0}/${job.totalSteps ?? 0}`;
+  // show "step N/total" when total is known, else just "step N" (the EC2 path's
+  // meta.json may omit total on older runs — don't render a bogus "/0").
+  const step = (job.totalSteps && job.totalSteps > 0)
+    ? `step ${job.step ?? 0}/${job.totalSteps}`
+    : `step ${job.step ?? 0}`;
   const footL = (job.status === 'RESUMING' && job.resumedAtCkpt != null)
     ? `resumed @ ckpt ${job.resumedAtCkpt}` : step;
   return `<div class="tile ${tcls}">`
