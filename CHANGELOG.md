@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [Unreleased]
 
+### Documentation
+- `docs/cloud-setup.md` — added a **Cost & control** section: the ~20% `ml.`
+  premium of SageMaker managed spot vs. self-managed EC2 spot (real Pricing/Spot
+  API numbers for `c7i.large`), what the premium buys (zero-infra managed
+  interrupt+resume, CloudWatch curves) and what it can't do (FIS can't target
+  managed-spot instances; no 2-min countdown). Marked all demo resources torn
+  down; completed the teardown runbook (EC2/FIS path + all three IAM roles).
+
 ### Changed
 - **Default instance is `ml.c7i.large` (CPU), not `ml.g5.xlarge`.** This account
   caps g5 training at 1 concurrent job (CPU quota 30); a parallel sweep needs

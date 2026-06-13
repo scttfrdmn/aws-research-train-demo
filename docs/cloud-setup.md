@@ -6,6 +6,10 @@ account `942542972736` (profile `aws`), region **`us-west-2`**.
 > Planning/status lives in GitHub, not here — this file documents *provisioned
 > infrastructure* so it's discoverable and reproducible. Read-only reference.
 
+> **Status (2026-06-12): all resources below have been TORN DOWN** — the demo ran
+> end to end (SageMaker sweep + EC2/FIS reclaim) and the account is a clean slate.
+> The create/run/teardown commands here reproduce it from scratch.
+
 ## Resources
 
 | Resource | Value |
@@ -140,13 +144,77 @@ ec2/teardown.sh                    # remove ASG + LT + FIS templates (keeps shar
 > instance **state** (the red→amber→green reclaim transition — which is the whole
 > stage-5 point), not a live RMSE curve. The SageMaker path keeps the curve.
 
+## Cost & control: SageMaker managed spot vs. self-managed EC2 spot
+
+Both executors run the **same `train.py` / head / DLC / checkpoint logic**, and the
+board renders both identically through the §9 tag contract (`--sweep` for
+SageMaker, `--ec2-sweep` for EC2). The difference is purely **cost vs. control** —
+there is a real `ml.` premium for the managed layer.
+
+Prices for `c7i.large`, us-west-2 (Pricing/Spot APIs, verified 2026-06-12):
+
+| | $/hr | vs EC2 on-demand |
+|---|---|---|
+| EC2 on-demand | $0.0893 | baseline |
+| **SageMaker on-demand** (`ml.c7i.large` training) | $0.1070 | **+20%** |
+| EC2 spot (cheapest AZ, observed) | ~$0.027 | −70% |
+| SageMaker managed spot | ~$0.032 (≈ the +20% riding on the spot rate) | — |
+
+**The ~20% premium buys managed convenience:** SageMaker detects the spot
+interruption, requeues the job, restarts the container, and your `train.py`
+resumes from `checkpoint_s3_uri` — **zero infra code**. You also get real
+CloudWatch metric curves (the log-scraper), `BillableTimeInSeconds`, and job
+identity preserved across reclaims. Just add `--spot` to `submit.py`/`sweep.py`.
+
+**Self-managed EC2 spot (the `ec2/` path) trades that for control:** you own the
+ASG + checkpoint-sync + interruption-watcher (everything in `ec2/`), but you get
+~20% cheaper compute **and** the ability to trigger/test interruption behavior.
+
+**What managed spot CANNOT do (why the `ec2/` path exists):** its instances run in
+a SageMaker service account, so **AWS FIS cannot target them** and there is **no
+2-minute interruption notice / countdown** exposed — you only see `Interrupted`
+after the fact (the board maps that → `RESUMING`; see `statusFromSM` in `live.go`).
+A real, on-demand FIS reclaim + the live `RECLAIM ⚠ 2:00` countdown require
+owning the instance, hence self-managed EC2. To make a *managed-spot* reclaim
+visible for a demo you'd wait for a natural reclaim or `StopTrainingJob` +
+resubmit (deterministic, exercises resume, but not a true spot event).
+
+**Guidance for the two audiences:**
+- *Most researchers / move fast:* SageMaker managed spot — `train.py --spot`, ~20%
+  more, you write none of the resilience.
+- *Cost-sensitive / need interruption control:* self-managed EC2 spot — ~20%
+  cheaper, FIS-testable, but you build (and own) the resilience.
+
 ## Teardown
+
+Full teardown to a clean slate (this is exactly what was run 2026-06-12).
 
 ```bash
 export AWS_PROFILE=aws AWS_REGION=us-west-2
 BUCKET=aws-research-train-demo-942542972736-us-west-2
+
+# 1. EC2/ASG/FIS path (stage 5) — ASG, launch template, FIS templates
+ec2/teardown.sh
+
+# 2. S3 bucket (data + checkpoints)
 aws s3 rm "s3://$BUCKET" --recursive
 aws s3api delete-bucket --bucket "$BUCKET" --region us-west-2
+
+# 3. EC2 instance role + profile
+aws iam remove-role-from-instance-profile --instance-profile-name aws-research-train-demo-ec2 --role-name aws-research-train-demo-ec2
+aws iam delete-instance-profile --instance-profile-name aws-research-train-demo-ec2
+aws iam delete-role-policy --role-name aws-research-train-demo-ec2 --policy-name training-access
+aws iam delete-role --role-name aws-research-train-demo-ec2
+
+# 4. FIS role
+aws iam delete-role-policy --role-name aws-research-train-demo-fis --policy-name fis-spot-interrupt
+aws iam delete-role --role-name aws-research-train-demo-fis
+
+# 5. SageMaker execution role
 aws iam delete-role-policy --role-name aws-research-train-demo-exec --policy-name training-access
 aws iam delete-role --role-name aws-research-train-demo-exec
 ```
+
+> Delete the ASG (step 1) **before** the EC2 instance role — the role is in use
+> while the instance is alive. `ec2/teardown.sh` force-deletes the ASG, which
+> terminates the instance first.
