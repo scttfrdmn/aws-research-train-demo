@@ -21,6 +21,7 @@ SWEEP="{{SWEEP}}"
 FEAT="{{FEAT}}"
 DEPTH="{{DEPTH}}"
 EPOCHS="{{EPOCHS}}"
+EPOCH_DELAY="{{EPOCH_DELAY}}"
 REGION="{{REGION}}"
 DLC="{{DLC}}"
 CKPT_S3="s3://${BUCKET}/${SWEEP}/ec2/checkpoints/"
@@ -81,7 +82,7 @@ docker run --rm \
   -w /opt/src \
   "$DLC" bash -c "
     pip install -q -r src/heads/molecular/requirements.txt &&
-    python train.py --domain molecular --feat ${FEAT} --depth ${DEPTH} --epochs ${EPOCHS}
+    python train.py --domain molecular --feat ${FEAT} --depth ${DEPTH} --epochs ${EPOCHS} --epoch-delay ${EPOCH_DELAY}
   "
 
 # training finished without interruption — final sync, stop the persister

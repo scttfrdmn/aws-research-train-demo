@@ -15,7 +15,9 @@ BUCKET="${BUCKET:-aws-research-train-demo-942542972736-us-west-2}"
 SWEEP="${SWEEP:-mol-esol-ec2spot}"
 FEAT="${FEAT:-graph}"
 DEPTH="${DEPTH:-deep}"
-EPOCHS="${EPOCHS:-5000}"          # long, so there's a window to interrupt
+EPOCHS="${EPOCHS:-2000}"          # many epochs…
+EPOCH_DELAY="${EPOCH_DELAY:-1.0}" # …paced 1s apart so the run lasts ~30+ min:
+                                  # a real window to watch and to interrupt
 INSTANCE_TYPE="${INSTANCE_TYPE:-c7i.large}"   # plain EC2 type (no ml. prefix)
 AMI="${AMI:-ami-0d45a4eba03d1e2cf}"           # AL2023 x86_64, us-west-2
 SUBNET="${SUBNET:-subnet-0376742606a975d27}"  # default-VPC public subnet (us-west-2b)
@@ -30,7 +32,8 @@ echo "Templating user-data…"
 UD=$(sed \
   -e "s|{{BUCKET}}|${BUCKET}|g" -e "s|{{SWEEP}}|${SWEEP}|g" \
   -e "s|{{FEAT}}|${FEAT}|g"     -e "s|{{DEPTH}}|${DEPTH}|g" \
-  -e "s|{{EPOCHS}}|${EPOCHS}|g" -e "s|{{REGION}}|${REGION}|g" \
+  -e "s|{{EPOCHS}}|${EPOCHS}|g" -e "s|{{EPOCH_DELAY}}|${EPOCH_DELAY}|g" \
+  -e "s|{{REGION}}|${REGION}|g" \
   -e "s|{{DLC}}|${DLC}|g" "${HERE}/userdata.sh" | base64)
 
 echo "Creating launch template ${LT_NAME}…"

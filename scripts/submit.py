@@ -68,6 +68,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "feat": args.feat,
         "depth": args.depth,
         "epochs": args.epochs,
+        "epoch_delay": args.epoch_delay,
         "_sweep": args.sweep,
     }
     job_name = _job_name(args.sweep, args.seq)
@@ -182,6 +183,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--feat", default="ecfp")
     p.add_argument("--depth", default="shallow")
     p.add_argument("--epochs", type=int, default=300)
+    p.add_argument(
+        "--epoch-delay",
+        type=float,
+        default=0.0,
+        help="seconds slept between epochs — stretch wall-clock so a sweep is "
+        "watchable / a spot job is interruptible mid-stream (science unchanged)",
+    )
     # ml.c7i.large (CPU): the tiny ESOL models don't need a GPU, and this
     # account caps ml.g5.xlarge at 1 concurrent job (CPU quota is 30), so a
     # parallel sweep needs CPU. c7i.large is the cheapest SageMaker training

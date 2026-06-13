@@ -68,6 +68,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--instance", default="ml.c7i.large")
     p.add_argument("--spot", action="store_true")
     p.add_argument("--epochs", type=int, default=300)
+    p.add_argument(
+        "--epoch-delay",
+        type=float,
+        default=0.0,
+        help="seconds slept between epochs (watchable sweep / interruptible job)",
+    )
     p.add_argument("--s3-bucket", default=None)
     p.add_argument("--role-arn", default=None)
     p.add_argument("--region", default=None)
@@ -92,6 +98,7 @@ def main(argv: list[str] | None = None) -> None:
             feat=point.get("feat", "ecfp"),
             depth=point.get("depth", "shallow"),
             epochs=args.epochs,
+            epoch_delay=args.epoch_delay,
             instance=args.instance,
             spot=args.spot,
             sweep=args.sweep,

@@ -10,6 +10,7 @@ Sweep axis (the hypothesis): featurization ``{ecfp, graph, graph+3d}`` × depth
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -94,6 +95,7 @@ class MolecularHead:
     name = "molecular"
     dependency_group = "molecular"
     _ckpt_every = 25  # epochs between checkpoints (spot-resume granularity)
+    _epoch_delay = 0.0  # seconds slept between epochs (--epoch-delay pacing knob)
 
     # --- contract ---------------------------------------------------------
 
@@ -126,6 +128,11 @@ class MolecularHead:
         depth = str(hp.get("depth", "shallow"))
         epochs = int(hp.get("epochs", 50))
         lr = float(hp.get("lr", 1e-3))
+        # Pacing knob: seconds to sleep between epochs. ESOL is so small that a
+        # run finishes in seconds — useless for watching a sweep or interrupting
+        # a spot job mid-stream. --epoch-delay stretches wall-clock without
+        # changing the science (it's a CLI arg, not a constant).
+        self._epoch_delay = float(hp.get("epoch_delay", 0.0))
 
         # Smoke mode (--max-steps) trains a small subset so even graph+3d's
         # conformer embedding stays in seconds; full runs load all of ESOL.
@@ -261,6 +268,8 @@ class MolecularHead:
             run.metric_sink.log(epoch, {self.metric_name(): rmse})
             if epoch % self._ckpt_every == 0:
                 self._checkpoint(run, model, "ecfp", depth, epoch, opt)
+            if self._epoch_delay:
+                time.sleep(self._epoch_delay)
         self._checkpoint(run, model, "ecfp", depth, total - 1, opt)
 
     def _fit_graph(
@@ -299,6 +308,8 @@ class MolecularHead:
             run.metric_sink.log(epoch, {self.metric_name(): rmse})
             if epoch % self._ckpt_every == 0:
                 self._checkpoint(run, model, feat, depth, epoch, opt)
+            if self._epoch_delay:
+                time.sleep(self._epoch_delay)
         self._checkpoint(run, model, feat, depth, total - 1, opt)
 
 
