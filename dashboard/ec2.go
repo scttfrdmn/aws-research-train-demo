@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -40,9 +41,18 @@ type ec2Client struct {
 type sweepState struct {
 	curve         []float64
 	lastEpoch     int
-	reclaimMarker int  // curve index where the last reclaim happened (-1 = none)
-	sawInstance   bool // have we ever seen a running instance for this sweep?
+	reclaimMarker int        // curve index where the last reclaim happened (-1 = none)
+	sawInstance   bool       // have we ever seen a running instance for this sweep?
+	runningSec    float64    // accumulated RUNNING seconds (billed; excludes reclaim gaps)
+	lastTick      *time.Time // wall-clock of the previous poll, to add the delta
+	t0            *time.Time // first time we saw an instance — wall-clock t0 for effective rate
 }
+
+// approxSpotUSDPerHour is the rough spot price for the cost meter. c7i.large
+// on-demand is $0.107/hr (verified via Pricing API, us-west-2, 2026-06-12);
+// spot typically runs ~60-70% off, so ~$0.04/hr. The meter is a live "real
+// money is being spent" indicator, not an invoice — approximate is fine.
+const approxSpotUSDPerHour = 0.04
 
 func newEC2Client(ctx context.Context, region, bucket string) (*ec2Client, error) {
 	opts := []func(*config.LoadOptions) error{}
@@ -205,6 +215,29 @@ func (ec *ec2Client) fetchEC2Sweep(ctx context.Context, sweep string) (feed, err
 	if st.reclaimMarker >= 0 && st.reclaimMarker <= len(job.Curve) {
 		rx := float64(st.reclaimMarker) / float64(max(len(job.Curve)-1, 1)) * 200
 		job.ReclaimAt = &rx
+	}
+
+	// Meter: accumulate ONLY time while an instance is actually running — the
+	// reclaim gap (no instance) and PENDING boot don't count, since you're not
+	// billed for training then. t0 is the first sighting (wall-clock); the
+	// effective rate = billed cost / wall-clock, which DROPS on every reclaim
+	// (you spanned more time than you paid for — the spot-savings story).
+	now := time.Now()
+	if st.t0 == nil && st.sawInstance {
+		st.t0 = &now
+	}
+	if job.Status == "IN_PROGRESS" && st.lastTick != nil {
+		st.runningSec += now.Sub(*st.lastTick).Seconds()
+	}
+	st.lastTick = &now
+	job.ElapsedSec = int(st.runningSec)
+	job.CostUSD = st.runningSec / 3600.0 * approxSpotUSDPerHour
+	if st.t0 != nil {
+		wall := now.Sub(*st.t0).Seconds()
+		job.WallSec = int(wall)
+		if wall > 0 {
+			job.EffUSDPerHr = job.CostUSD / (wall / 3600.0)
+		}
 	}
 	ec.mu.Unlock()
 

@@ -39,6 +39,10 @@ type Job struct {
 	Curve         []float64 `json:"curve"`                   // metric series for the sparkline
 	ReclaimAt     *float64  `json:"reclaimAt,omitempty"`     // x (0..200) of a spot reclaim marker
 	ResumedAtCkpt *int      `json:"resumedAtCkpt,omitempty"` // checkpoint step a RESUMING job rejoined from
+	ElapsedSec    int       `json:"elapsedSec,omitempty"`    // BILLED running seconds (excludes reclaim gaps)
+	WallSec       int       `json:"wallSec,omitempty"`       // wall-clock since first instance (incl. gaps)
+	CostUSD       float64   `json:"costUsd,omitempty"`       // billed running time × spot $/hr (the meter)
+	EffUSDPerHr   float64   `json:"effUsdPerHr,omitempty"`   // cost / wall-clock — effective rate (drops on reclaim)
 }
 
 type feed struct {

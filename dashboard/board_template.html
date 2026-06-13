@@ -13,7 +13,8 @@
   *{box-sizing:border-box;}
   body{margin:0;background:#080a0e;font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;
     color:var(--ink);display:flex;justify-content:center;padding:28px 16px;}
-  .mc-wrap{background:var(--bg);border:1px solid var(--edge);border-radius:14px;overflow:hidden;max-width:880px;width:100%;}
+  /* zoom scales the whole board ~150% uniformly (fonts, padding, svg, borders). */
+  .mc-wrap{background:var(--bg);border:1px solid var(--edge);border-radius:14px;overflow:hidden;max-width:880px;width:100%;zoom:1.5;}
   .mc-head{display:flex;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--edge);background:linear-gradient(180deg,#171d26,#12171e);}
   .mc-title{font-weight:650;font-size:15px;}
   .mc-sub{font-family:var(--mono);font-size:11px;color:var(--dim);}
@@ -33,6 +34,8 @@
   .spark{height:46px;width:100%;display:block;}
   .foot{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:7px;}
   .foot .m{color:var(--ink);}
+  .meter{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:5px;padding-top:5px;border-top:1px solid var(--edge);}
+  .meter .t{color:var(--ink);} .meter .c{color:var(--done);} .meter .eff{color:var(--running);}
   .pulse{animation:p 1.6s ease-in-out infinite;} @keyframes p{0%,100%{opacity:.55}50%{opacity:1}}
   .note{display:flex;gap:10px;align-items:flex-start;padding:12px 18px 16px;border-top:1px solid var(--edge);background:#10151c;}
   .note .tag{font-family:var(--mono);font-size:10px;color:var(--running);border:1px solid #1f3a4d;border-radius:6px;padding:3px 7px;white-space:nowrap;margin-top:1px;}
@@ -131,12 +134,32 @@ function tile(job){
     : `step ${job.step ?? 0}`;
   const footL = (job.status === 'RESUMING' && job.resumedAtCkpt != null)
     ? `resumed @ ckpt ${job.resumedAtCkpt}` : step;
-  return `<div class="tile ${tcls}">`
+  return `<div class="tile ${tcls}" data-id="${esc(job.id)}">`
     + `<span class="badge ${bcls}${pulse ? ' pulse' : ''}">${btext}</span>`
     + `<div class="rid">${esc(rid)}</div>`
     + `<div class="hyp">${esc(job.hypothesis || '')}</div>`
     + spark(job)
     + `<div class="foot"><span>${esc(footL)}</span><span class="m">${esc(metric)}</span></div>`
+    + meterLine(job)
+    + `</div>`;
+}
+
+// hh:mm:ss from seconds
+function hms(s){
+  s = Math.max(0, Math.floor(s));
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), x = s%60;
+  return (h? h+':' : '') + String(m).padStart(h?2:1,'0') + ':' + String(x).padStart(2,'0');
+}
+
+// The meter: billed run time + cost (climbing), and the effective $/hr — which
+// DROPS on every reclaim because wall-clock advances while cost doesn't.
+function meterLine(job){
+  if(!job.elapsedSec && !job.costUsd) return '';
+  const eff = job.effUsdPerHr ? `<span class="eff">~$${job.effUsdPerHr.toFixed(3)}/hr eff</span>` : '';
+  return `<div class="meter">`
+    + `<span class="t" data-elapsed="${job.elapsedSec||0}" data-running="${job.status==='IN_PROGRESS'?1:0}">⏱ ${hms(job.elapsedSec||0)}</span>`
+    + `<span class="c" data-cost="${job.costUsd||0}">$${(job.costUsd||0).toFixed(4)}</span>`
+    + eff
     + `</div>`;
 }
 
@@ -160,8 +183,22 @@ async function refresh(){
   }catch(e){ /* leave the last good frame on the screen; no flicker */ }
 }
 
+// Client-side 1s tick so the meter visibly moves between the 4s polls. Only
+// advances tiles that are IN_PROGRESS (running = being billed); the next poll
+// resyncs to the server's authoritative numbers.
+const SPOT_PER_SEC = 0.04 / 3600;  // matches approxSpotUSDPerHour on the server
+function tick(){
+  document.querySelectorAll('.meter .t[data-running="1"]').forEach(t => {
+    const e = (+t.dataset.elapsed) + 1; t.dataset.elapsed = e;
+    t.textContent = '⏱ ' + hms(e);
+    const c = t.parentElement.querySelector('.c');
+    if(c){ const v = (+c.dataset.cost) + SPOT_PER_SEC; c.dataset.cost = v; c.textContent = '$' + v.toFixed(4); }
+  });
+}
+
 refresh();
 setInterval(refresh, POLL_MS);
+setInterval(tick, 1000);
 </script>
 </body>
 </html>
