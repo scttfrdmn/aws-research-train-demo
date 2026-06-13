@@ -197,6 +197,9 @@ viewers = [
     { name = "matplotlib" },
     { name = "streamlit" },
 ]
+weather = [
+    { name = "matplotlib" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -224,6 +227,7 @@ viewers = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "streamlit", specifier = ">=1.40" },
 ]
+weather = [{ name = "matplotlib", specifier = ">=3.8" }]
 
 [[package]]
 name = "bcrypt"

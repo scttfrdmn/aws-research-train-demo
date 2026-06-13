@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 # llm in v0.4+). The spine never imports these modules eagerly.
 _REGISTRY: dict[str, str] = {
     "molecular": "heads.molecular.head:HEAD",
+    "weather": "heads.weather.head:HEAD",
 }
 
 

@@ -42,6 +42,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
   "Unsupported" by sagemaker 3.13.1).
 
 ### Added
+- **Weather head** (`src/heads/weather/`) — spatial field prediction, the second
+  head against the unchanged contract (SPEC §3; a MINOR bump). Sweep axis
+  operator {fno, unet} × resolution; metric field RMSE; viewer = predicted |
+  truth | error triptych. FNO and U-Net are **hand-rolled in plain torch**
+  (`torch.fft` spectral conv, differentiable on CPU) — no `neuraloperator`
+  dependency (#9). Synthetic in-code deblur task (band-limited Gaussian random
+  fields), smokes in seconds on CPU. Registered in the spine; **no spine code
+  changed except one registry entry** — the conformance + tag-charset tests now
+  auto-cover it. `weather` uv group (just `matplotlib`).
 - **Stage 5 real-reclaim path (`ec2/` + board `--ec2-sweep`).** AWS FIS can't
   interrupt SageMaker *managed* spot (those instances live in a SageMaker service
   account), so a true FIS-driven reclaim runs training on a self-managed EC2 spot

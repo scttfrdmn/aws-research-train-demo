@@ -24,7 +24,14 @@ molecular = [
     "torch-geometric>=2.8,<2.9",
     "pandas>=2.0",
 ]
-# weather / genomics / llm groups are added when those heads land (v0.4+).
+# Weather head — see issue #9 (verify-first). Hand-rolled FNO + U-Net in plain
+# torch (torch.fft.rfft2/irfft2, differentiable on CPU): NO neuraloperator (it
+# drags in wandb/h5py/tensorly + a torch_harmonics compiler trap). Only matplotlib
+# for the truth|pred|error triptych; torch+numpy are core.
+weather = [
+    "matplotlib>=3.8",
+]
+# genomics / llm groups are added when those heads land (v0.5+).
 
 # Cloud execution (stages 3+): managed jobs, spot, checkpointing, tracking.
 # Kept out of core so local author/smoke needs no AWS SDK. local extra brings
