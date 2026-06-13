@@ -109,18 +109,29 @@ function spark(job){
   const pts = sparkPoints(job.curve);
   const last = (job.curve && job.curve.length)
     ? sparkPoints(job.curve).split(' ').pop().split(',') : null;
+  // RECLAIM: the instance is STILL TRAINING (in the 2-min grace window), so the
+  // curve stays the live blue — only the badge/countdown + a red marker line
+  // signal the incoming reclaim. The line goes amber/dashed only once RESUMING.
+  const line = (job.status === 'RECLAIM') ? 'var(--running)' : stroke;
   let svg = `<svg class="spark" viewBox="0 0 200 46" preserveAspectRatio="none">`;
   if(job.status === 'RESUMING' && job.reclaimAt != null){
     // split the curve at the reclaim point: solid before, dashed (resumed) after
     const rx = (job.reclaimAt).toFixed(1);
-    svg += `<polyline fill="none" stroke="${stroke}" stroke-width="1.6" points="${pts}"/>`
+    svg += `<polyline fill="none" stroke="${line}" stroke-width="1.6" points="${pts}"/>`
+      + `<line x1="${rx}" y1="2" x2="${rx}" y2="44" stroke="#f85149" stroke-width="1" stroke-dasharray="2 2"/>`
+      + `<text x="${(+rx)+3}" y="11" fill="#f85149" font-size="7" font-family="monospace">reclaim</text>`;
+  } else if(job.status === 'RECLAIM' && job.reclaimAt != null){
+    // still-blue curve + a red dashed marker where the reclaim was fired
+    const rx = (job.reclaimAt).toFixed(1);
+    svg += `<polyline fill="none" stroke="${line}" stroke-width="1.6" points="${pts}"/>`
       + `<line x1="${rx}" y1="2" x2="${rx}" y2="44" stroke="#f85149" stroke-width="1" stroke-dasharray="2 2"/>`
       + `<text x="${(+rx)+3}" y="11" fill="#f85149" font-size="7" font-family="monospace">reclaim</text>`;
   } else {
-    svg += `<polyline fill="none" stroke="${stroke}" stroke-width="1.6" points="${pts}"/>`;
+    svg += `<polyline fill="none" stroke="${line}" stroke-width="1.6" points="${pts}"/>`;
   }
-  if(job.status === 'IN_PROGRESS' && last){
-    svg += `<circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="${stroke}" class="pulse"/>`;
+  // live pulsing cursor while actually training (IN_PROGRESS or RECLAIM)
+  if((job.status === 'IN_PROGRESS' || job.status === 'RECLAIM') && last){
+    svg += `<circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="var(--running)" class="pulse"/>`;
   }
   return svg + `</svg>`;
 }
