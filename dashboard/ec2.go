@@ -281,6 +281,17 @@ func (ec *ec2Client) fetchEC2Sweep(ctx context.Context, sweep string) (feed, err
 	// or PENDING boot. t0 is the first sighting (wall-clock); the effective rate
 	// = billed cost / wall-clock, which DROPS on every reclaim gap (you spanned
 	// more time than you paid for — the spot-savings story).
+	//
+	// Cold-start seeding: the board is a stateless viewer, so on (re)start we
+	// don't reset to 0 — we seed from the running instance's authoritative EC2
+	// LaunchTime, so a reload immediately shows the instance's real age. (Billed
+	// time from already-terminated prior instances can't be recovered after a
+	// restart; we count from the live instance, which is the honest floor.)
+	if st.lastTick == nil && current != nil && current.LaunchTime != nil &&
+		(job.Status == "IN_PROGRESS" || job.Status == "RECLAIM") {
+		st.runningSec = now.Sub(*current.LaunchTime).Seconds()
+		st.t0 = current.LaunchTime
+	}
 	if st.t0 == nil && st.sawInstance {
 		st.t0 = &now
 	}
